@@ -4,7 +4,6 @@ from pathlib import Path
 
 from concrete import fhe
 
-
 CLIENT_APP_DIR = Path(__file__).resolve().parents[2]
 ARTIFACTS_DIR = CLIENT_APP_DIR / ".artifacts" / "concrete"
 CLIENT_SPECS_PATH = ARTIFACTS_DIR / "client_specs.bin"
@@ -43,17 +42,16 @@ class ConcreteClientRuntime:
     def encrypt_distance_call(self, qx: int, qy: int, px: int, py: int) -> str:
         self.ensure_keys()
 
-        encrypted_args, public_args = self.client.encrypt(qx, qy, px, py)
-
-        if encrypted_args is not None:
-            raise ValueError(
-                "Expected no separate encrypted args for this circuit, but got some."
-            )
+        public_args = self.client.encrypt(qx, qy, px, py)
 
         return _b64encode(public_args.serialize())
 
     def decrypt_distance(self, serialized_public_result_b64: str) -> int:
         self.ensure_keys()
-        public_result = fhe.PublicResult.deserialize(_b64decode(serialized_public_result_b64))
+
+        public_result = fhe.PublicResult.deserialize(
+            _b64decode(serialized_public_result_b64)
+        )
+
         result = self.client.decrypt(public_result)
         return int(result)
