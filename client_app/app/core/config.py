@@ -11,6 +11,24 @@ class Settings(BaseSettings):
     ckks_coeff_mod_bit_sizes: str = "60,40,40,60"
     ckks_global_scale_bits: int = 40
 
+    # BFV / TenSEAL settings
+    bfv_poly_modulus_degree: int = 8192
+    bfv_plain_modulus: int = 1032193
+    bfv_scale: int = 100
+
+    # Auth DB settings (SEPARATE DATABASE)
+    auth_db_host: str = "127.0.0.1"
+    auth_db_port: int = 5432
+    auth_db_name: str = "auth_db"
+    auth_db_user: str = "postgres"
+    auth_db_password: str
+    auth_db_schema: str = "auth"
+
+    # JWT settings
+    jwt_secret_key: str
+    jwt_algorithm: str = "HS256"
+    jwt_access_token_expire_minutes: int = 60
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -20,6 +38,16 @@ class Settings(BaseSettings):
     @property
     def ckks_coeff_mod_bit_sizes_list(self) -> list[int]:
         return [int(x.strip()) for x in self.ckks_coeff_mod_bit_sizes.split(",") if x.strip()]
+
+    @property
+    def auth_dsn(self) -> str:
+        return (
+            f"host={self.auth_db_host} "
+            f"port={self.auth_db_port} "
+            f"dbname={self.auth_db_name} "
+            f"user={self.auth_db_user} "
+            f"password={self.auth_db_password}"
+        )
 
 
 settings = Settings()

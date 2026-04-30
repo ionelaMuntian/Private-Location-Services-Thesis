@@ -6,7 +6,6 @@ from psycopg.rows import dict_row
 from ...core.config import settings
 from ...infrastructure.db import get_connection
 
-
 class PoiRepository:
     def __init__(self):
         self.schema = settings.db_schema
@@ -104,6 +103,47 @@ class PoiRepository:
             "k": k,
             "latitude_m": latitude_m,
             "longitude_m": longitude_m,
+        }
+
+        with get_connection() as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                cur.execute(sql, params)
+                rows = cur.fetchall()
+
+        return [dict(row) for row in rows]
+
+    def search_by_name(
+        self,
+        query: str,
+        limit: int = 10,
+    ) -> list[dict[str, Any]]:
+        sql = f"""
+        SELECT
+            p.id::bigint AS id,
+            p.name AS name,
+            p.category AS category,
+            p.lat::double precision AS latitude,
+            p.lon::double precision AS longitude
+        FROM {self.schema}.{self.table} p
+        WHERE p.name IS NOT NULL
+          AND btrim(p.name) <> ''
+          AND p.name ILIKE %(pattern)s
+        ORDER BY
+            CASE
+                WHEN lower(p.name) = lower(%(exact_query)s) THEN 0
+                WHEN lower(p.name) LIKE lower(%(prefix_query)s) THEN 1
+                ELSE 2
+            END,
+            length(p.name),
+            p.name
+        LIMIT %(limit)s;
+        """
+
+        params = {
+            "pattern": f"%{query}%",
+            "exact_query": query,
+            "prefix_query": f"{query}%",
+            "limit": limit,
         }
 
         with get_connection() as conn:

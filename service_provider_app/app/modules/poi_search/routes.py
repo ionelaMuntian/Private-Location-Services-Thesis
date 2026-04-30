@@ -1,5 +1,5 @@
 # service_provider_app/app/modules/poi_search/routes.py
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 
 from .schemas import (
     CategoryListResponse,
@@ -7,6 +7,7 @@ from .schemas import (
     ConcreteCandidatesResponse,
     ConcreteEvaluationRequest,
     ConcreteEvaluationResponse,
+    PoiNameSearchResponse,
     ServiceProviderNearestKRequest,
     ServiceProviderNearestKResponse,
 )
@@ -34,3 +35,11 @@ def concrete_candidates(request: ConcreteCandidatesRequest):
 @router.post("/concrete/evaluate", response_model=ConcreteEvaluationResponse)
 def concrete_evaluate(request: ConcreteEvaluationRequest):
     return service.concrete_evaluate(request)
+
+
+@router.get("/search-by-name", response_model=PoiNameSearchResponse)
+def search_by_name(
+    q: str = Query(..., min_length=1),
+    limit: int = Query(10, ge=1, le=50),
+):
+    return service.search_by_name(query=q, limit=limit)

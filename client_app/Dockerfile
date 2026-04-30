@@ -12,8 +12,9 @@ RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
 COPY client_app/app ./app
+COPY client_app/tools ./tools
+COPY client_app/.artifacts ./.artifacts
 COPY client_app/.env ./.env
-COPY shared ./shared
 
 EXPOSE 8000
 

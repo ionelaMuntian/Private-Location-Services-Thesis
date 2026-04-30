@@ -3,7 +3,7 @@ from fastapi import HTTPException
 
 from .base import ClientCryptoAdapter
 from ....core.concrete_client_runtime import ConcreteClientRuntime
-from shared.concrete_distance.quantization import (
+from .quantization import (
     QuantizationConfig,
     dequantize_squared_distance_to_km,
     quantize_metric_coordinate,
@@ -13,7 +13,7 @@ quant_config = QuantizationConfig(scale_divisor=100)
 
 
 class ConcreteClientAdapter(ClientCryptoAdapter):
-    def _get_runtime(self) -> ConcreteClientRuntime:
+    def _create_runtime(self) -> ConcreteClientRuntime:
         try:
             return ConcreteClientRuntime()
         except Exception as exc:
@@ -23,7 +23,7 @@ class ConcreteClientAdapter(ClientCryptoAdapter):
             ) from exc
 
     def prepare_query(self, latitude: float, longitude: float, k: int) -> dict:
-        runtime = self._get_runtime()
+        runtime = self._create_runtime()
 
         qx = quantize_metric_coordinate(float(longitude), quant_config)
         qy = quantize_metric_coordinate(float(latitude), quant_config)
@@ -43,11 +43,19 @@ class ConcreteClientAdapter(ClientCryptoAdapter):
                     "top_k_on_client": True,
                 },
             },
-            "local_state": None,
+            "local_state": {
+                "runtime": runtime,
+                "requested_k": k,
+            },
         }
 
-    def build_public_args_for_candidates(self, metadata: dict, candidates: list[dict]) -> list[dict]:
-        runtime = self._get_runtime()
+    def build_public_args_for_candidates(
+        self,
+        metadata: dict,
+        candidates: list[dict],
+        local_state: dict,
+    ) -> list[dict]:
+        runtime = local_state["runtime"]
 
         qx = int(metadata["query_x_quantized"])
         qy = int(metadata["query_y_quantized"])
@@ -73,10 +81,11 @@ class ConcreteClientAdapter(ClientCryptoAdapter):
         return items
 
     def parse_response(self, response_data: dict, local_state: dict | None = None) -> list[dict]:
-        runtime = self._get_runtime()
+        if local_state is None or "runtime" not in local_state:
+            raise ValueError("Missing Concrete runtime in local_state.")
 
-        metadata = response_data["metadata"]
-        requested_k = int(metadata["requested_k"])
+        runtime = local_state["runtime"]
+        requested_k = int(local_state["requested_k"])
 
         scored_items = []
         for item in response_data["encrypted_results"]:

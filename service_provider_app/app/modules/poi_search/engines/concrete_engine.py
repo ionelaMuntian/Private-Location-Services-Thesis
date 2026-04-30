@@ -1,6 +1,8 @@
 # service_provider_app/app/modules/poi_search/engines/concrete_engine.py
-from .base import ServiceProviderEngine
+
 from fastapi import HTTPException
+
+from .base import ServiceProviderEngine
 
 
 class ConcreteEngine(ServiceProviderEngine):

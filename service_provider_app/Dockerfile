@@ -13,7 +13,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
 
 COPY service_provider_app/app ./app
 COPY service_provider_app/.env ./.env
-COPY shared ./shared
+COPY client_app/.artifacts ./client_app/.artifacts
 
 EXPOSE 8001
 

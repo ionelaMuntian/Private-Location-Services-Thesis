@@ -1,4 +1,8 @@
 # service_provider_app/app/modules/poi_search/service.py
+from ..poi_search.engines.core_concrete import (
+    execute_concrete_candidates,
+    execute_concrete_evaluation,
+)
 from .repository import PoiRepository
 from .schemas import (
     ConcreteCandidatesRequest,
@@ -6,10 +10,8 @@ from .schemas import (
     ServiceProviderNearestKRequest,
 )
 from .scenarios.nearest_k import execute_nearest_k
-from ..poi_search.engines.core_concrete import (
-    execute_concrete_candidates,
-    execute_concrete_evaluation,
-)
+from .scenarios.search_by_name import execute_search_by_name
+
 
 class PoiSearchServiceProviderService:
     def __init__(self):
@@ -26,3 +28,6 @@ class PoiSearchServiceProviderService:
 
     def concrete_evaluate(self, request: ConcreteEvaluationRequest) -> dict:
         return execute_concrete_evaluation(request)
+
+    def search_by_name(self, query: str, limit: int = 10) -> dict:
+        return execute_search_by_name(query=query, limit=limit)

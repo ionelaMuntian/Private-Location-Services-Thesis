@@ -1,9 +1,10 @@
+# client_app/app/modules/poi_search/crypto/quantization.py
 from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
 class QuantizationConfig:
-    scale_divisor: int = 100  # 1 unitate = 100 metri
+    scale_divisor: int = 100
 
 
 def quantize_metric_coordinate(value_m: float, config: QuantizationConfig) -> int:

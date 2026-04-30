@@ -1,11 +1,12 @@
+#C:\Users\Mariana Ionela\MATERII\AN 4 - UTCN\LICENTA - PYTHON\client_app\app\core\concrete_client_runtime.py
 import base64
 from pathlib import Path
 
 from concrete import fhe
 
 
-BASE_DIR = Path(__file__).resolve().parents[2]
-ARTIFACTS_DIR = BASE_DIR / "shared" / "concrete_artifacts"
+CLIENT_APP_DIR = Path(__file__).resolve().parents[2]
+ARTIFACTS_DIR = CLIENT_APP_DIR / ".artifacts" / "concrete"
 CLIENT_SPECS_PATH = ARTIFACTS_DIR / "client_specs.bin"
 
 
@@ -22,7 +23,7 @@ class ConcreteClientRuntime:
         if not CLIENT_SPECS_PATH.exists():
             raise FileNotFoundError(
                 f"Concrete client specs not found at {CLIENT_SPECS_PATH}. "
-                "Run compile_distance_circuit.py first."
+                "Run client_app/tools/compile_distance_circuit.py first."
             )
 
         specs_bytes = CLIENT_SPECS_PATH.read_bytes()
@@ -40,14 +41,15 @@ class ConcreteClientRuntime:
         return _b64encode(self.client.evaluation_keys.serialize())
 
     def encrypt_distance_call(self, qx: int, qy: int, px: int, py: int) -> str:
-        """
-        Circuitul compilat are 4 inputuri.
-        qx, qy sunt marcate encrypted în compilare,
-        px, py sunt clear, dar tot trebuie furnizate la encrypt(...)
-        ca parte din PublicArguments.
-        """
         self.ensure_keys()
-        public_args = self.client.encrypt(qx, qy, px, py)
+
+        encrypted_args, public_args = self.client.encrypt(qx, qy, px, py)
+
+        if encrypted_args is not None:
+            raise ValueError(
+                "Expected no separate encrypted args for this circuit, but got some."
+            )
+
         return _b64encode(public_args.serialize())
 
     def decrypt_distance(self, serialized_public_result_b64: str) -> int:

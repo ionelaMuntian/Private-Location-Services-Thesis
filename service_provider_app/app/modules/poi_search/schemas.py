@@ -1,9 +1,30 @@
 # service_provider_app/app/modules/poi_search/schemas.py
 from typing import Any, List, Literal
+
 from pydantic import BaseModel, Field, model_validator
 
 
-SchemeType = Literal["plaintext", "ckks", "concrete"]
+SingleSchemeType = Literal["plaintext", "ckks", "bfv", "concrete"]
+SchemeType = Literal["plaintext", "ckks", "bfv", "concrete"]
+
+
+class ServerTimingMetrics(BaseModel):
+    candidate_selection_ms: float | None = None
+    computation_ms: float | None = None
+    evaluation_ms: float | None = None
+    total_ms: float
+
+
+class WorkloadMetrics(BaseModel):
+    candidate_count: int | None = None
+    returned_count: int
+    k: int
+    category: str
+
+
+class MetricsEnvelope(BaseModel):
+    server: ServerTimingMetrics
+    workload: WorkloadMetrics
 
 
 class EncryptedLocationPayload(BaseModel):
@@ -27,7 +48,7 @@ class ServiceProviderNearestKRequest(BaseModel):
     def validate_payload_for_scheme(self):
         if self.scheme == "plaintext" and self.plaintext_query is None:
             raise ValueError("plaintext_query is required when scheme='plaintext'")
-        if self.scheme in {"ckks", "concrete"} and self.encrypted_query is None:
+        if self.scheme in {"ckks", "bfv", "concrete"} and self.encrypted_query is None:
             raise ValueError(f"encrypted_query is required when scheme='{self.scheme}'")
         return self
 
@@ -71,6 +92,7 @@ class ConcreteCandidatesResponse(BaseModel):
     category: str
     k: int
     candidates: List[CandidatePoiItem]
+    metrics: MetricsEnvelope
 
 
 class ConcreteEvaluationItem(BaseModel):
@@ -98,17 +120,31 @@ class ConcreteEvaluationResultItem(BaseModel):
 
 
 class ConcreteEvaluationResponse(BaseModel):
-    scheme: SchemeType
+    scheme: SingleSchemeType
     encrypted_results: List[ConcreteEvaluationResultItem]
     metadata: dict[str, Any]
+    metrics: MetricsEnvelope
 
 
 class ServiceProviderNearestKResponse(BaseModel):
-    scheme: SchemeType
+    scheme: SingleSchemeType
     results: List[PoiResult] | None = None
     encrypted_results: List[EncryptedPoiResult] | None = None
     metadata: dict[str, Any] | None = None
+    metrics: MetricsEnvelope
 
 
 class CategoryListResponse(BaseModel):
     categories: List[str]
+
+class PoiNameSearchItem(BaseModel):
+    id: int
+    name: str
+    category: str
+    latitude: float
+    longitude: float
+
+class PoiNameSearchResponse(BaseModel):
+    query: str
+    count: int
+    results: List[PoiNameSearchItem]

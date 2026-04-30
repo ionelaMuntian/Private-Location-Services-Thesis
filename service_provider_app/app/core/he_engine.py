@@ -1,3 +1,4 @@
+# service_provider_app/app/core/he_engine.py
 import base64
 
 import tenseal as ts
@@ -20,4 +21,12 @@ def load_ckks_vector(context: ts.Context, payload: str) -> ts.CKKSVector:
 
 
 def dump_ckks_vector(vector: ts.CKKSVector) -> str:
+    return _b64encode(vector.serialize())
+
+
+def load_bfv_vector(context: ts.Context, payload: str) -> ts.BFVVector:
+    return ts.bfv_vector_from(context, _b64decode(payload))
+
+
+def dump_bfv_vector(vector: ts.BFVVector) -> str:
     return _b64encode(vector.serialize())

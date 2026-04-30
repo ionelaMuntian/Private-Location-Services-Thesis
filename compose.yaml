@@ -11,6 +11,18 @@ services:
     volumes:
       - thesis_db_data:/var/lib/postgresql/data
 
+  db_auth:
+    image: postgres:16
+    container_name: thesis_auth_db
+    environment:
+      POSTGRES_DB: auth_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: AuthDbPass123!
+    ports:
+      - "5433:5432"
+    volumes:
+      - thesis_auth_db_data:/var/lib/postgresql/data
+
   service_provider_app:
     build:
       context: .
@@ -34,6 +46,8 @@ services:
       - "8000:8000"
     depends_on:
       - service_provider_app
+      - db_auth
 
 volumes:
   thesis_db_data:
+  thesis_auth_db_data:
