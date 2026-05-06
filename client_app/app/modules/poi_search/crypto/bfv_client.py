@@ -30,14 +30,15 @@ class BFVClientAdapter(ClientCryptoAdapter):
             "encrypted_query": {
                 "payload": encrypted_query,
                 "metadata": {
+                    # Only send what the server strictly needs to evaluate the HE circuit.
+                    # Plaintext coordinates are NEVER included — the server must not learn
+                    # the user's location.
                     "public_context": BFVContextManager.serialize_public_context(full_context),
                     "query_encoding": "scaled_lat_m_lon_m_vector",
                     "distance_metric": "scaled_squared_euclidean_meters",
                     "top_k_on_client": True,
                     "requested_k": k,
                     "bfv_scale": scale,
-                    "query_latitude_m": float(latitude),
-                    "query_longitude_m": float(longitude),
                 },
             },
             "local_state": {
@@ -74,5 +75,6 @@ class BFVClientAdapter(ClientCryptoAdapter):
                 }
             )
 
+        # Sorting happens on the client after decryption — the server never sees distances.
         scored_items.sort(key=lambda x: x["distance_km"])
         return scored_items[:requested_k]

@@ -6,50 +6,40 @@ from psycopg.rows import dict_row
 from ...core.config import settings
 from ...infrastructure.db import get_connection
 
+
 class PoiRepository:
     def __init__(self):
         self.schema = settings.db_schema
         self.table = settings.db_table
 
-    def get_candidates_by_category(
+    # ------------------------------------------------------------------
+    # Used by BFV / CKKS / Concrete — NO location parameter.
+    # The server fetches all POIs in the requested category and returns
+    # them in a fixed, location-independent order (by id).
+    # The user's coordinates are never involved here.
+    # ------------------------------------------------------------------
+    def get_all_by_category(
         self,
         category: str,
-        latitude_m: float,
-        longitude_m: float,
-        limit: int = 500,
+        limit: int = 1000,
     ) -> list[dict[str, Any]]:
         sql = f"""
-        WITH query_point AS (
-            SELECT
-                ST_SetSRID(ST_MakePoint(%(longitude_m)s, %(latitude_m)s), 3857) AS q_geom_3857,
-                ST_Transform(
-                    ST_SetSRID(ST_MakePoint(%(longitude_m)s, %(latitude_m)s), 3857),
-                    4326
-                )::geography AS q_geog
-        )
         SELECT
-            p.id::bigint AS id,
-            p.name AS name,
-            p.category AS category,
-            p.lat::double precision AS latitude,
-            p.lon::double precision AS longitude,
+            p.id::bigint          AS id,
+            p.name                AS name,
+            p.category            AS category,
+            p.lat::double precision  AS latitude,
+            p.lon::double precision  AS longitude,
             p.lat_m::double precision AS lat_m,
-            p.lon_m::double precision AS lon_m,
-            ST_Distance(
-                ST_Transform(p.geom, 4326)::geography,
-                q.q_geog
-            )::double precision AS distance_m
+            p.lon_m::double precision AS lon_m
         FROM {self.schema}.{self.table} p
-        CROSS JOIN query_point q
         WHERE lower(p.category) = lower(%(category)s)
-        ORDER BY p.geom <-> q.q_geom_3857
+        ORDER BY p.id
         LIMIT %(limit)s;
         """
 
         params = {
             "category": category,
-            "latitude_m": latitude_m,
-            "longitude_m": longitude_m,
             "limit": limit,
         }
 
@@ -60,6 +50,10 @@ class PoiRepository:
 
         return [dict(row) for row in rows]
 
+    # ------------------------------------------------------------------
+    # Used only by the PLAINTEXT scheme — the baseline comparison that
+    # intentionally uses the user's location for a direct nearest-K query.
+    # ------------------------------------------------------------------
     def get_by_category_nearest_k_plaintext(
         self,
         category: str,

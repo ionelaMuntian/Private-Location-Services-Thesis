@@ -11,6 +11,13 @@ from .quantization import (
 
 quant_config = QuantizationConfig(scale_divisor=100)
 
+# Local origin after quantization.
+# Dataset area:
+# lon_m ≈ 2362254 -> 23622 after /100
+# lat_m ≈ 5741384 -> 57414 after /100
+ORIGIN_X_Q = 23600
+ORIGIN_Y_Q = 57400
+
 
 class ConcreteClientAdapter(ClientCryptoAdapter):
     def _create_runtime(self) -> ConcreteClientRuntime:
@@ -25,8 +32,8 @@ class ConcreteClientAdapter(ClientCryptoAdapter):
     def prepare_query(self, latitude: float, longitude: float, k: int) -> dict:
         runtime = self._create_runtime()
 
-        qx = quantize_metric_coordinate(float(longitude), quant_config)
-        qy = quantize_metric_coordinate(float(latitude), quant_config)
+        qx = quantize_metric_coordinate(float(longitude), quant_config) - ORIGIN_X_Q
+        qy = quantize_metric_coordinate(float(latitude), quant_config) - ORIGIN_Y_Q
 
         return {
             "plaintext_query": None,
@@ -35,17 +42,17 @@ class ConcreteClientAdapter(ClientCryptoAdapter):
                 "metadata": {
                     "evaluation_keys": runtime.serialize_evaluation_keys(),
                     "requested_k": k,
-                    "query_latitude_m": float(latitude),
-                    "query_longitude_m": float(longitude),
-                    "query_x_quantized": qx,
-                    "query_y_quantized": qy,
-                    "quantization_scale_divisor": quant_config.scale_divisor,
                     "top_k_on_client": True,
                 },
             },
             "local_state": {
                 "runtime": runtime,
                 "requested_k": k,
+                "qx": qx,
+                "qy": qy,
+                "quantization_scale_divisor": quant_config.scale_divisor,
+                "origin_x_q": ORIGIN_X_Q,
+                "origin_y_q": ORIGIN_Y_Q,
             },
         }
 
@@ -57,13 +64,19 @@ class ConcreteClientAdapter(ClientCryptoAdapter):
     ) -> list[dict]:
         runtime = local_state["runtime"]
 
-        qx = int(metadata["query_x_quantized"])
-        qy = int(metadata["query_y_quantized"])
+        qx = int(local_state["qx"])
+        qy = int(local_state["qy"])
 
         items = []
         for candidate in candidates:
-            px = quantize_metric_coordinate(float(candidate["lon_m"]), quant_config)
-            py = quantize_metric_coordinate(float(candidate["lat_m"]), quant_config)
+            px = (
+                quantize_metric_coordinate(float(candidate["lon_m"]), quant_config)
+                - ORIGIN_X_Q
+            )
+            py = (
+                quantize_metric_coordinate(float(candidate["lat_m"]), quant_config)
+                - ORIGIN_Y_Q
+            )
 
             public_args_b64 = runtime.encrypt_distance_call(qx, qy, px, py)
 
@@ -90,7 +103,10 @@ class ConcreteClientAdapter(ClientCryptoAdapter):
         scored_items = []
         for item in response_data["encrypted_results"]:
             dist2_quantized = runtime.decrypt_distance(item["encrypted_distance"])
-            distance_km = dequantize_squared_distance_to_km(dist2_quantized, quant_config)
+            distance_km = dequantize_squared_distance_to_km(
+                dist2_quantized,
+                quant_config,
+            )
 
             scored_items.append(
                 {

@@ -11,6 +11,7 @@ from ..schemas import ServiceProviderNearestKRequest
 
 repository = PoiRepository()
 
+
 def get_engine(scheme: str):
     if scheme == "plaintext":
         return PlaintextEngine()
@@ -26,6 +27,10 @@ def get_engine(scheme: str):
 def execute_nearest_k(request: ServiceProviderNearestKRequest) -> dict:
     total_timer = StepTimer()
 
+    # ------------------------------------------------------------------
+    # PLAINTEXT — baseline only. The client intentionally sends its coords
+    # so the server can compute the exact nearest-K directly in the DB.
+    # ------------------------------------------------------------------
     if request.scheme == "plaintext":
         if request.plaintext_query is None:
             raise HTTPException(
@@ -41,7 +46,6 @@ def execute_nearest_k(request: ServiceProviderNearestKRequest) -> dict:
             longitude_m=request.plaintext_query.longitude_m,
         )
         candidate_selection_ms = candidate_timer.elapsed_ms()
-
         total_ms = total_timer.elapsed_ms()
 
         return {
@@ -62,19 +66,26 @@ def execute_nearest_k(request: ServiceProviderNearestKRequest) -> dict:
             },
         }
 
-    if request.scheme in {"ckks", "bfv", "concrete"}:
+    # ------------------------------------------------------------------
+    # BFV / CKKS — privacy-preserving HE schemes.
+    # The server fetches ALL POIs in the category with NO location filter.
+    # It then computes an encrypted squared distance for every POI and
+    # returns all encrypted results to the client.
+    # The client decrypts and sorts locally — the server never learns
+    # the user's location or which POI is closest.
+    # ------------------------------------------------------------------
+    if request.scheme in {"ckks", "bfv"}:
         if request.encrypted_query is None:
             raise HTTPException(
                 status_code=422,
                 detail=f"encrypted_query is required for {request.scheme} mode.",
             )
 
+        # Fetch candidates with no location — order by id (neutral ordering).
         candidate_timer = StepTimer()
-        candidates = repository.get_candidates_by_category(
+        candidates = repository.get_all_by_category(
             category=request.category,
-            latitude_m=request.encrypted_query.metadata["query_latitude_m"],
-            longitude_m=request.encrypted_query.metadata["query_longitude_m"],
-            limit=max(request.k * 20, 200),
+            limit=1000,
         )
         candidate_selection_ms = candidate_timer.elapsed_ms()
 
@@ -90,7 +101,6 @@ def execute_nearest_k(request: ServiceProviderNearestKRequest) -> dict:
             candidates=candidates,
         )
         computation_ms = compute_timer.elapsed_ms()
-
         total_ms = total_timer.elapsed_ms()
 
         engine_result["metrics"] = {
@@ -101,12 +111,29 @@ def execute_nearest_k(request: ServiceProviderNearestKRequest) -> dict:
             },
             "workload": {
                 "candidate_count": len(candidates),
-                "returned_count": len(engine_result.get("results", []) or engine_result.get("encrypted_results", [])),
+                "returned_count": len(
+                    engine_result.get("encrypted_results", [])
+                ),
                 "k": request.k,
                 "category": request.category,
             },
         }
         return engine_result
+
+    # ------------------------------------------------------------------
+    # Concrete uses the dedicated two-round flow:
+    #   POST /concrete/candidates  (no location)
+    #   POST /concrete/evaluate    (only ciphertext)
+    # The generic /nearest-k endpoint is not used for Concrete.
+    # ------------------------------------------------------------------
+    if request.scheme == "concrete":
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Concrete uses a dedicated two-round protocol. "
+                "Use POST /concrete/candidates then POST /concrete/evaluate."
+            ),
+        )
 
     raise HTTPException(
         status_code=501,

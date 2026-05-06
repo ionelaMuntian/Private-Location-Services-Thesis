@@ -13,30 +13,34 @@ repository = PoiRepository()
 
 
 def execute_concrete_candidates(request: ConcreteCandidatesRequest) -> dict:
+    """
+    Round 1 of the Concrete protocol.
+
+    Returns ALL POIs in the requested category — no user location is used.
+    The client will later use these POI coordinates (which are public data)
+    to build the encrypted distance arguments locally.
+    """
     total_timer = StepTimer()
 
     candidate_timer = StepTimer()
-    candidates = repository.get_candidates_by_category(
+    candidates = repository.get_all_by_category(
         category=request.category,
-        latitude_m=request.latitude_m,
-        longitude_m=request.longitude_m,
-        limit=max(request.k * 20, 200),
+        limit=1000,
     )
     candidate_selection_ms = candidate_timer.elapsed_ms()
 
-    normalized = []
-    for item in candidates:
-        normalized.append(
-            {
-                "id": item["id"],
-                "name": item["name"],
-                "category": item["category"],
-                "latitude": item["latitude"],
-                "longitude": item["longitude"],
-                "lat_m": item["lat_m"],
-                "lon_m": item["lon_m"],
-            }
-        )
+    normalized = [
+        {
+            "id": item["id"],
+            "name": item["name"],
+            "category": item["category"],
+            "latitude": item["latitude"],
+            "longitude": item["longitude"],
+            "lat_m": item["lat_m"],
+            "lon_m": item["lon_m"],
+        }
+        for item in candidates
+    ]
 
     total_ms = total_timer.elapsed_ms()
 
@@ -61,6 +65,17 @@ def execute_concrete_candidates(request: ConcreteCandidatesRequest) -> dict:
 
 
 def execute_concrete_evaluation(request: ConcreteEvaluationRequest) -> dict:
+    """
+    Round 2 of the Concrete protocol.
+
+    The server receives only:
+      - evaluation_keys_b64: the FHE evaluation keys (public, contains no location)
+      - items: a list of encrypted public_args, one per POI
+               (each encryptes both the user's coords and the POI's coords together)
+
+    The server evaluates the FHE distance circuit for each item and returns
+    the encrypted results. It never sees any plaintext coordinate.
+    """
     total_timer = StepTimer()
 
     try:
