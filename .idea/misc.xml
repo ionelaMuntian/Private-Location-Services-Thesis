@@ -3,4 +3,5 @@
   <component name="Black">
     <option name="sdkName" value="Python 3.10 (LICENTA - PYTHON)" />
   </component>
+  <component name="ProjectRootManager" version="2" project-jdk-name="lab4" project-jdk-type="Python SDK" />
 </project>

@@ -160,8 +160,7 @@ export default function PoiSearchPage() {
   const hasResults = useMemo(() => results.length > 0, [results]);
   const hasAllRuns = useMemo(() => allRuns.length > 0, [allRuns]);
   const isNameSearch = form.searchType === "name";
-  const shouldShowDistance =
-    !isNameSearch && selectedScheme !== "name-search";
+  const shouldShowDistance = !isNameSearch && selectedScheme !== "name-search";
 
   const handleChange = (field, value) => {
     setForm((prev) => ({
@@ -388,7 +387,9 @@ export default function PoiSearchPage() {
                       <input
                         type="text"
                         value={form.nameQuery}
-                        onChange={(e) => handleChange("nameQuery", e.target.value)}
+                        onChange={(e) =>
+                          handleChange("nameQuery", e.target.value)
+                        }
                         placeholder="e.g. Libra, Mega Image, Ted's Coffee"
                       />
                     </label>
@@ -413,7 +414,9 @@ export default function PoiSearchPage() {
                           type="number"
                           step="any"
                           value={form.latitude_m}
-                          onChange={(e) => handleChange("latitude_m", e.target.value)}
+                          onChange={(e) =>
+                            handleChange("latitude_m", e.target.value)
+                          }
                         />
                       </label>
 
@@ -423,7 +426,9 @@ export default function PoiSearchPage() {
                           type="number"
                           step="any"
                           value={form.longitude_m}
-                          onChange={(e) => handleChange("longitude_m", e.target.value)}
+                          onChange={(e) =>
+                            handleChange("longitude_m", e.target.value)
+                          }
                         />
                       </label>
 
@@ -437,14 +442,15 @@ export default function PoiSearchPage() {
                           <option value="ckks">ckks</option>
                           <option value="bfv">bfv</option>
                           <option value="concrete">concrete</option>
+                          <option value="openfhe">openfhe</option>
                           <option value="all">all</option>
                         </select>
                       </label>
 
                       {form.scheme === "ckks" && (
                         <div className="full-width poi-alert">
-                          CKKS uses approximate homomorphic encryption and is suited for
-                          real-valued coordinates.
+                          CKKS uses approximate homomorphic encryption and is suited
+                          for real-valued coordinates.
                         </div>
                       )}
 
@@ -456,14 +462,21 @@ export default function PoiSearchPage() {
 
                       {form.scheme === "concrete" && (
                         <div className="full-width poi-alert">
-                          Concrete is currently unstable. Use it separately only if you
-                          want to test it on its own.
+                          Concrete is currently unstable. Use it separately only if
+                          you want to test it on its own.
+                        </div>
+                      )}
+
+                      {form.scheme === "openfhe" && (
+                        <div className="full-width poi-alert">
+                          OpenFHE computes encrypted distances on the server. The
+                          client decrypts and sorts the final distances locally.
                         </div>
                       )}
 
                       {form.scheme === "all" && (
                         <div className="full-width poi-alert">
-                          All mode currently runs plaintext, CKKS, and BFV only.
+                          All mode currently runs plaintext, CKKS, BFV, and OpenFHE.
                         </div>
                       )}
                     </>
@@ -490,7 +503,7 @@ export default function PoiSearchPage() {
                   <h3>Results</h3>
                   <p>
                     {mode === "all"
-                      ? "Comparison across the working schemes."
+                      ? "Comparison across plaintext, CKKS, BFV, and OpenFHE."
                       : form.searchType === "name"
                       ? "Returned POIs matching the entered name."
                       : "Returned nearest points of interest."}
@@ -502,19 +515,24 @@ export default function PoiSearchPage() {
                     {form.searchType === "name"
                       ? "Searching by name..."
                       : form.scheme === "all"
-                      ? "Running plaintext, CKKS, and BFV..."
+                      ? "Running plaintext, CKKS, BFV, and OpenFHE..."
                       : "Searching for nearest POIs..."}
                   </p>
                 )}
 
                 {!loading && mode === "single" && !hasResults && !error && (
-                  <p className="poi-empty">No results yet. Run a query to see results.</p>
+                  <p className="poi-empty">
+                    No results yet. Run a query to see results.
+                  </p>
                 )}
 
                 {!loading && mode === "single" && hasResults && (
                   <>
                     {responseMetrics && (
-                      <SimpleMetrics metrics={responseMetrics} scheme={selectedScheme} />
+                      <SimpleMetrics
+                        metrics={responseMetrics}
+                        scheme={selectedScheme}
+                      />
                     )}
                     <ResultsTable
                       results={results}

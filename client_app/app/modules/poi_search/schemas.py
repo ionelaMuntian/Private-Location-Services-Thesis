@@ -4,9 +4,8 @@ from typing import List, Literal, Union
 from pydantic import BaseModel, Field
 
 
-SingleSchemeType = Literal["plaintext", "ckks", "bfv", "concrete"]
-SchemeType = Literal["plaintext", "ckks", "bfv", "concrete", "all"]
-
+SingleSchemeType = Literal["plaintext", "ckks", "bfv", "concrete", "openfhe"]
+SchemeType = Literal["plaintext", "ckks", "bfv", "concrete", "openfhe", "all"]
 
 class ClientTimingMetrics(BaseModel):
     prepare_query_ms: float | None = None

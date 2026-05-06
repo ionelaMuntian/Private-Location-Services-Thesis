@@ -4,8 +4,8 @@ from typing import Any, List, Literal
 from pydantic import BaseModel, Field, model_validator
 
 
-SingleSchemeType = Literal["plaintext", "ckks", "bfv", "concrete"]
-SchemeType = Literal["plaintext", "ckks", "bfv", "concrete"]
+SingleSchemeType = Literal["plaintext", "ckks", "bfv", "concrete", "openfhe"]
+SchemeType = Literal["plaintext", "ckks", "bfv", "concrete", "openfhe"]
 
 
 class ServerTimingMetrics(BaseModel):
@@ -29,9 +29,6 @@ class MetricsEnvelope(BaseModel):
 
 class EncryptedLocationPayload(BaseModel):
     payload: str | None = None
-    # metadata must NOT contain plaintext coordinates for HE schemes.
-    # Valid keys: public_context, query_encoding, distance_metric,
-    #             top_k_on_client, requested_k, bfv_scale, evaluation_keys.
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -51,18 +48,24 @@ class ServiceProviderNearestKRequest(BaseModel):
     def validate_payload_for_scheme(self):
         if self.scheme == "plaintext" and self.plaintext_query is None:
             raise ValueError("plaintext_query is required when scheme='plaintext'")
-        if self.scheme in {"ckks", "bfv", "concrete"} and self.encrypted_query is None:
+
+        if self.scheme in {"ckks", "bfv", "concrete", "openfhe"} and self.encrypted_query is None:
             raise ValueError(f"encrypted_query is required when scheme='{self.scheme}'")
-        # Extra guard: reject any request that sneaks plaintext coordinates into
-        # the encrypted_query metadata for HE schemes.
-        if self.scheme in {"ckks", "bfv", "concrete"} and self.encrypted_query is not None:
-            forbidden = {"query_latitude_m", "query_longitude_m"}
+
+        if self.scheme in {"ckks", "bfv", "concrete", "openfhe"} and self.encrypted_query is not None:
+            forbidden = {
+                "query_latitude_m",
+                "query_longitude_m",
+                "latitude_m",
+                "longitude_m",
+            }
             leaked = forbidden & set(self.encrypted_query.metadata.keys())
             if leaked:
                 raise ValueError(
                     f"Plaintext coordinates must not be included in encrypted_query.metadata "
                     f"for scheme='{self.scheme}'. Found: {leaked}"
                 )
+
         return self
 
 
@@ -95,13 +98,8 @@ class CandidatePoiItem(BaseModel):
 
 
 class ConcreteCandidatesRequest(BaseModel):
-    """
-    The server returns all POIs in the requested category.
-    No user location is included — the server must not learn where the user is.
-    """
     category: str
     k: int = Field(..., gt=0, le=200)
-    # latitude_m and longitude_m have been intentionally removed.
 
 
 class ConcreteCandidatesResponse(BaseModel):

@@ -11,3 +11,4 @@ tenseal
 numpy
 concrete-python
 email-validator
+openfhe

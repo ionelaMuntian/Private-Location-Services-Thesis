@@ -6,3 +6,4 @@ pydantic-settings
 tenseal
 numpy
 concrete-python
+openfhe

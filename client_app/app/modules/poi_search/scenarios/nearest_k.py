@@ -10,7 +10,7 @@ from ..crypto.ckks_client import CKKSClientAdapter
 from ..crypto.concrete_client import ConcreteClientAdapter
 from ..crypto.plaintext_client import PlaintextClientAdapter
 from ..schemas import NearestKClientRequest
-
+from ..crypto.openfhe_client import OpenFHEClientAdapter
 
 def get_client_adapter(scheme: str):
     if scheme == "plaintext":
@@ -21,8 +21,9 @@ def get_client_adapter(scheme: str):
         return BFVClientAdapter()
     if scheme == "concrete":
         return ConcreteClientAdapter()
+    if scheme == "openfhe":
+        return OpenFHEClientAdapter()
     raise HTTPException(status_code=400, detail=f"Unsupported scheme: {scheme}")
-
 
 async def _execute_single_scheme(request: NearestKClientRequest) -> dict:
     if request.scheme == "all":
@@ -219,7 +220,7 @@ async def execute_nearest_k(request: NearestKClientRequest) -> dict:
         return await _execute_single_scheme(request)
 
     runs = []
-    for scheme in ["plaintext", "ckks", "bfv"]:
+    for scheme in ["plaintext", "ckks", "bfv", "openfhe"]:
         scheme_request = NearestKClientRequest(
             category=request.category,
             k=request.k,
