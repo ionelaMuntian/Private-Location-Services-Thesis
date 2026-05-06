@@ -1,3 +1,4 @@
+# service_provider_app/app/core/openfhe_engine.py
 import base64
 import tempfile
 from pathlib import Path
@@ -60,6 +61,15 @@ def load_eval_mult_keys(cc, eval_mult_keys_b64: str) -> None:
     path = _write_b64_to_temp_file(eval_mult_keys_b64)
 
     try:
+        # OpenFHE keeps EvalMultKeys in an internal cache.
+        # If the same keyTag is loaded twice, it throws:
+        # "Can not save a EvalMultKeys vector as there is a key vector for the given keyTag".
+        # Clearing before loading avoids duplicate-key insertion between requests.
+        try:
+            cc.ClearEvalMultKeys()
+        except Exception:
+            pass
+
         if not cc.DeserializeEvalMultKey(path, BINARY):
             raise RuntimeError("OpenFHE failed to deserialize EvalMult keys.")
     finally:
