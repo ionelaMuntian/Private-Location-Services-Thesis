@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package thesis;
+
+service ServiceProviderGateway {
+  rpc Call(ServiceProviderRequest) returns (ServiceProviderResponse);
+
+  // Concrete evaluation keys are huge, so we upload them using streaming gRPC.
+  rpc UploadConcreteKeys(stream ConcreteKeyChunk) returns (ConcreteKeyUploadResponse);
+}
+
+message ServiceProviderRequest {
+  string method = 1;
+  string path = 2;
+  string json_payload = 3;
+}
+
+message ServiceProviderResponse {
+  int32 status_code = 1;
+  string json_payload = 2;
+}
+
+message ConcreteKeyChunk {
+  bytes data = 1;
+}
+
+message ConcreteKeyUploadResponse {
+  int32 status_code = 1;
+  string json_payload = 2;
+}

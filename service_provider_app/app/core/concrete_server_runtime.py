@@ -1,4 +1,5 @@
 # service_provider_app/app/core/concrete_server_runtime.py
+
 import base64
 import json
 from pathlib import Path
@@ -48,30 +49,59 @@ class ConcreteServerRuntime:
         items: list,
     ) -> list:
         """
-        Optimized batch evaluation.
-          - Deserializes evaluation_keys ONCE
-          - Deserializes encrypted (qx, qy) ONCE
-          - For each item, runs the FHE distance circuit using the SAME
-            encrypted user coordinates and the item's clear (px, py)
+        Backward-compatible version.
 
-        Returns a list of {item fields..., encrypted_distance: <b64>}.
+        This method receives the Concrete evaluation keys as base64 inside the
+        request body. It still works, but it is not recommended because the
+        evaluation keys are extremely large and can create huge JSON/gRPC payloads.
+
+        Prefer run_distance_batch_with_key_bytes(), where the keys are uploaded
+        separately through streaming gRPC.
         """
-        # Load shared state ONCE
-        evaluation_keys = fhe.EvaluationKeys.deserialize(
-            _b64decode(evaluation_keys_b64)
+        evaluation_keys_bytes = _b64decode(evaluation_keys_b64)
+
+        return self.run_distance_batch_with_key_bytes(
+            evaluation_keys_bytes=evaluation_keys_bytes,
+            encrypted_user_coords_b64=encrypted_user_coords_b64,
+            items=items,
         )
 
-        user_payload = json.loads(_b64decode(encrypted_user_coords_b64).decode("utf-8"))
+    def run_distance_batch_with_key_bytes(
+        self,
+        evaluation_keys_bytes: bytes,
+        encrypted_user_coords_b64: str,
+        items: list,
+    ) -> list:
+        """
+        Optimized Concrete batch evaluation.
+
+        The evaluation keys are received as raw bytes, usually loaded from the
+        service-provider key store after they were uploaded once using streaming
+        gRPC.
+
+        The server:
+          - deserializes evaluation keys once
+          - deserializes encrypted user coordinates once
+          - evaluates the Concrete distance circuit for each candidate POI
+          - returns encrypted distances
+
+        The service provider never sees the plaintext user coordinates.
+        """
+        evaluation_keys = fhe.EvaluationKeys.deserialize(evaluation_keys_bytes)
+
+        user_payload = json.loads(
+            _b64decode(encrypted_user_coords_b64).decode("utf-8")
+        )
+
         encrypted_qx = fhe.Value.deserialize(_b64decode(user_payload["enc_qx"]))
         encrypted_qy = fhe.Value.deserialize(_b64decode(user_payload["enc_qy"]))
 
         results = []
+
         for item in items:
             px = int(item.px)
             py = int(item.py)
 
-            # In Concrete 2.x, server.run accepts a mix of encrypted Value
-            # objects and plain integers (for the 'clear' positions).
             result = self.server.run(
                 encrypted_qx,
                 encrypted_qy,

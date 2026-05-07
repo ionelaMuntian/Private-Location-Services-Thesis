@@ -1,4 +1,6 @@
 # service_provider_app/app/modules/poi_search/schemas.py
+# service_provider_app/app/modules/poi_search/schemas.py
+
 from typing import Any, List, Literal
 
 from pydantic import BaseModel, Field, model_validator
@@ -59,7 +61,9 @@ class ServiceProviderNearestKRequest(BaseModel):
                 "latitude_m",
                 "longitude_m",
             }
+
             leaked = forbidden & set(self.encrypted_query.metadata.keys())
+
             if leaked:
                 raise ValueError(
                     f"Plaintext coordinates must not be included in encrypted_query.metadata "
@@ -115,15 +119,35 @@ class ConcreteEvaluationItem(BaseModel):
     category: str
     latitude: float
     longitude: float
+
+    # Clear POI coordinates after quantization and origin-shifting.
+    # These are public candidate coordinates, not user coordinates.
     px: int
     py: int
 
 
 class ConcreteEvaluationRequest(BaseModel):
-    evaluation_keys_b64: str
+    # New optimized mode:
+    # key_id references evaluation keys previously uploaded by streaming gRPC.
+    key_id: str | None = None
+
+    # Backward-compatible fallback:
+    # direct evaluation keys can still be sent, but this is not recommended
+    # because Concrete evaluation keys are extremely large.
+    evaluation_keys_b64: str | None = None
+
     encrypted_user_coords_b64: str
-    requested_k: int
+    requested_k: int = Field(..., gt=0, le=200)
     items: List[ConcreteEvaluationItem]
+
+    @model_validator(mode="after")
+    def validate_key_source(self):
+        if not self.key_id and not self.evaluation_keys_b64:
+            raise ValueError(
+                "Concrete evaluation requires either key_id or evaluation_keys_b64."
+            )
+
+        return self
 
 
 class ConcreteEvaluationResultItem(BaseModel):

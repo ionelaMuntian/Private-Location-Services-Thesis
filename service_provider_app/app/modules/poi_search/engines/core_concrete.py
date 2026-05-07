@@ -1,4 +1,7 @@
 # service_provider_app/app/modules/poi_search/engines/core_concrete.py
+from time import time
+from uuid import uuid4
+
 from fastapi import HTTPException
 
 from ....core.concrete_server_runtime import ConcreteServerRuntime
@@ -11,19 +14,100 @@ from ..schemas import (
 
 repository = PoiRepository()
 
+# Keep Concrete small for testing/demo.
+CONCRETE_CANDIDATE_LIMIT = 2
+
+_CONCRETE_KEY_STORE: dict[str, dict] = {}
+CONCRETE_KEY_TTL_SECONDS = 60 * 60
+
+_runtime: ConcreteServerRuntime | None = None
+
+
+def _get_runtime() -> ConcreteServerRuntime:
+    global _runtime
+
+    if _runtime is None:
+        try:
+            _runtime = ConcreteServerRuntime()
+        except Exception as exc:
+            raise HTTPException(
+                status_code=503,
+                detail=f"Concrete server runtime unavailable: {exc}",
+            ) from exc
+
+    return _runtime
+
+
+def _cleanup_expired_keys() -> None:
+    now = time()
+
+    expired_key_ids = [
+        key_id
+        for key_id, entry in _CONCRETE_KEY_STORE.items()
+        if now - float(entry["created_at"]) > CONCRETE_KEY_TTL_SECONDS
+    ]
+
+    for key_id in expired_key_ids:
+        _CONCRETE_KEY_STORE.pop(key_id, None)
+
+
+def execute_concrete_upload_keys(evaluation_keys_bytes: bytes) -> dict:
+    _cleanup_expired_keys()
+
+    if not evaluation_keys_bytes:
+        raise HTTPException(
+            status_code=422,
+            detail="Concrete evaluation keys are required.",
+        )
+
+    key_id = str(uuid4())
+
+    _CONCRETE_KEY_STORE[key_id] = {
+        "evaluation_keys_bytes": evaluation_keys_bytes,
+        "created_at": time(),
+    }
+
+    return {
+        "key_id": key_id,
+        "expires_in_seconds": CONCRETE_KEY_TTL_SECONDS,
+    }
+
+
+def _resolve_evaluation_keys_bytes(request: ConcreteEvaluationRequest) -> bytes:
+    if request.key_id:
+        _cleanup_expired_keys()
+
+        entry = _CONCRETE_KEY_STORE.get(request.key_id)
+
+        if entry is None:
+            raise HTTPException(
+                status_code=404,
+                detail=(
+                    "Concrete key_id was not found or expired. "
+                    "Upload the evaluation keys again."
+                ),
+            )
+
+        return entry["evaluation_keys_bytes"]
+
+    if request.evaluation_keys_b64:
+        import base64
+
+        return base64.b64decode(request.evaluation_keys_b64.encode("utf-8"))
+
+    raise HTTPException(
+        status_code=422,
+        detail="Concrete evaluation requires either key_id or evaluation_keys_b64.",
+    )
+
 
 def execute_concrete_candidates(request: ConcreteCandidatesRequest) -> dict:
-    """
-    Round 1 of the Concrete protocol.
-
-    Returns ALL POIs in the requested category — no user location is used.
-    """
     total_timer = StepTimer()
 
     candidate_timer = StepTimer()
     candidates = repository.get_all_by_category(
         category=request.category,
-        limit=1000,
+        limit=CONCRETE_CANDIDATE_LIMIT,
     )
     candidate_selection_ms = candidate_timer.elapsed_ms()
 
@@ -63,30 +147,14 @@ def execute_concrete_candidates(request: ConcreteCandidatesRequest) -> dict:
 
 
 def execute_concrete_evaluation(request: ConcreteEvaluationRequest) -> dict:
-    """
-    Round 2 of the Concrete protocol — optimized batch version.
-
-    The server receives:
-      - evaluation_keys_b64: FHE evaluation keys (loaded ONCE)
-      - encrypted_user_coords_b64: encrypted (qx, qy) (loaded ONCE)
-      - items: list of POI candidates with CLEAR (px, py) integers
-
-    The server evaluates the FHE distance circuit for each POI and returns
-    the encrypted results. It never sees plaintext user coordinates.
-    """
     total_timer = StepTimer()
 
-    try:
-        runtime = ConcreteServerRuntime()
-    except Exception as exc:
-        raise HTTPException(
-            status_code=503,
-            detail=f"Concrete server runtime unavailable: {exc}",
-        ) from exc
+    runtime = _get_runtime()
+    evaluation_keys_bytes = _resolve_evaluation_keys_bytes(request)
 
     evaluation_timer = StepTimer()
-    encrypted_results = runtime.run_distance_batch(
-        evaluation_keys_b64=request.evaluation_keys_b64,
+    encrypted_results = runtime.run_distance_batch_with_key_bytes(
+        evaluation_keys_bytes=evaluation_keys_bytes,
         encrypted_user_coords_b64=request.encrypted_user_coords_b64,
         items=request.items,
     )

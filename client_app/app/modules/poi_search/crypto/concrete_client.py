@@ -32,15 +32,18 @@ class ConcreteClientAdapter(ClientCryptoAdapter):
         qx = quantize_metric_coordinate(float(longitude), quant_config) - ORIGIN_X_Q
         qy = quantize_metric_coordinate(float(latitude), quant_config) - ORIGIN_Y_Q
 
-        # Encrypt user coords ONCE (this is the heavy part)
         encrypted_user_coords_b64 = runtime.encrypt_user_coords(qx, qy)
+
+        # Important:
+        # Do NOT place evaluation keys in encrypted_query.metadata anymore.
+        # They are huge and will be uploaded separately using streaming gRPC.
+        evaluation_keys_bytes = runtime.serialize_evaluation_keys_bytes()
 
         return {
             "plaintext_query": None,
             "encrypted_query": {
                 "payload": None,
                 "metadata": {
-                    "evaluation_keys": runtime.serialize_evaluation_keys(),
                     "encrypted_user_coords": encrypted_user_coords_b64,
                     "requested_k": k,
                     "top_k_on_client": True,
@@ -51,6 +54,7 @@ class ConcreteClientAdapter(ClientCryptoAdapter):
                 "requested_k": k,
                 "qx": qx,
                 "qy": qy,
+                "evaluation_keys_bytes": evaluation_keys_bytes,
                 "quantization_scale_divisor": quant_config.scale_divisor,
                 "origin_x_q": ORIGIN_X_Q,
                 "origin_y_q": ORIGIN_Y_Q,
@@ -63,12 +67,8 @@ class ConcreteClientAdapter(ClientCryptoAdapter):
         candidates: list[dict],
         local_state: dict,
     ) -> list[dict]:
-        """
-        For Concrete, after the optimization, the client does NOT encrypt anything
-        per candidate. It only sends the POI coordinates as plain (clear) integers.
-        The user's coordinates are encrypted ONCE in prepare_query.
-        """
         items = []
+
         for candidate in candidates:
             px = (
                 quantize_metric_coordinate(float(candidate["lon_m"]), quant_config)
@@ -101,8 +101,10 @@ class ConcreteClientAdapter(ClientCryptoAdapter):
         requested_k = int(local_state["requested_k"])
 
         scored_items = []
+
         for item in response_data["encrypted_results"]:
             dist2_quantized = runtime.decrypt_distance(item["encrypted_distance"])
+
             distance_km = dequantize_squared_distance_to_km(
                 dist2_quantized,
                 quant_config,

@@ -7,13 +7,21 @@ from pydantic import BaseModel, Field
 SingleSchemeType = Literal["plaintext", "ckks", "bfv", "concrete", "openfhe"]
 SchemeType = Literal["plaintext", "ckks", "bfv", "concrete", "openfhe", "all"]
 
+
 class ClientTimingMetrics(BaseModel):
     prepare_query_ms: float | None = None
+
+    # Used by plaintext / CKKS / BFV / OpenFHE single-round protocol
     service_call_ms: float | None = None
-    parse_response_ms: float | None = None
+
+    # Used by Concrete optimized multi-step protocol
+    upload_keys_ms: float | None = None
     candidate_fetch_ms: float | None = None
     build_public_args_ms: float | None = None
     evaluate_call_ms: float | None = None
+
+    # Used by all schemes
+    parse_response_ms: float | None = None
     total_ms: float
 
 
@@ -40,8 +48,14 @@ class MetricsEnvelope(BaseModel):
 class NearestKClientRequest(BaseModel):
     category: str = Field(..., examples=["bank", "cafe", "supermarket"])
     k: int = Field(..., gt=0, le=200)
-    latitude_m: float = Field(..., description="Projected metric latitude-like coordinate (EPSG:3857 Y)")
-    longitude_m: float = Field(..., description="Projected metric longitude-like coordinate (EPSG:3857 X)")
+    latitude_m: float = Field(
+        ...,
+        description="Projected metric latitude-like coordinate (EPSG:3857 Y)",
+    )
+    longitude_m: float = Field(
+        ...,
+        description="Projected metric longitude-like coordinate (EPSG:3857 X)",
+    )
     scheme: SchemeType = "plaintext"
 
 
@@ -80,6 +94,7 @@ class AllSchemesComparisonResponse(BaseModel):
 class CategoryListResponse(BaseModel):
     categories: List[str]
 
+
 class PoiNameSearchItem(BaseModel):
     id: int
     name: str
@@ -93,4 +108,8 @@ class PoiNameSearchResponse(BaseModel):
     count: int
     results: List[PoiNameSearchItem]
 
-NearestKResponseType = Union[NearestKClientResponse, AllSchemesComparisonResponse]
+
+NearestKResponseType = Union[
+    NearestKClientResponse,
+    AllSchemesComparisonResponse,
+]

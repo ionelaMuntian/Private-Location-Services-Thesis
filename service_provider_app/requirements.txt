@@ -7,3 +7,6 @@ tenseal
 numpy
 concrete-python
 openfhe
+grpcio
+grpcio-tools
+protobuf

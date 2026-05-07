@@ -17,7 +17,6 @@ CLIENT_SPECS_PATH = ARTIFACTS_DIR / "client_specs.bin"
 ORIGIN_X_Q = np.int64(23600)
 ORIGIN_Y_Q = np.int64(57400)
 
-
 def squared_distance(
     qx_rel: np.int64,
     qy_rel: np.int64,

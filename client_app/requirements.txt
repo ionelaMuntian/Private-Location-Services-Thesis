@@ -12,3 +12,6 @@ numpy
 concrete-python
 email-validator
 openfhe
+grpcio
+grpcio-tools
+protobuf

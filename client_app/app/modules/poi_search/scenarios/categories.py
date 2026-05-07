@@ -1,5 +1,5 @@
 # client_app/app/modules/poi_search/scenarios/categories.py
-from ....infrastructure.http_client import get_from_service_provider
+from ....infrastructure.grpc_client import get_from_service_provider
 
 
 async def execute_list_categories() -> dict:

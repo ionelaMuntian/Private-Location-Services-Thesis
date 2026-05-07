@@ -1,7 +1,7 @@
 # client_app/app/modules/poi_search/scenarios/search_by_name.py
 from urllib.parse import quote
 
-from ....infrastructure.http_client import get_from_service_provider
+from ....infrastructure.grpc_client import get_from_service_provider
 
 
 async def execute_search_by_name(query: str, limit: int = 10) -> dict:

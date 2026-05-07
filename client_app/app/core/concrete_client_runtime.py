@@ -40,6 +40,10 @@ class ConcreteClientRuntime:
         self.ensure_keys()
         return _b64encode(self.client.evaluation_keys.serialize())
 
+    def serialize_evaluation_keys_bytes(self) -> bytes:
+        self.ensure_keys()
+        return self.client.evaluation_keys.serialize()
+
     def encrypt_user_coords(self, qx: int, qy: int) -> str:
         """
         Encrypts the user's (qx, qy) ONCE per query.

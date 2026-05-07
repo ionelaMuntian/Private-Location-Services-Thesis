@@ -4,6 +4,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     app_name: str = "Client App - Trusted Side"
+
+    # gRPC settings for client_app -> service_provider_app communication
+    service_provider_grpc_host: str = "service_provider_app"
+    service_provider_grpc_port: int = 50051
+
+    # Optional: keep this only if you still want HTTP fallback/debugging
     service_provider_base_url: str = "http://127.0.0.1:8001"
 
     # CKKS / TenSEAL settings
@@ -16,7 +22,7 @@ class Settings(BaseSettings):
     bfv_plain_modulus: int = 1032193
     bfv_scale: int = 100
 
-    # Auth DB settings (SEPARATE DATABASE)
+    # Auth DB settings
     auth_db_host: str = "127.0.0.1"
     auth_db_port: int = 5432
     auth_db_name: str = "auth_db"
