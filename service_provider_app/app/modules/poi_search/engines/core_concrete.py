@@ -17,8 +17,6 @@ def execute_concrete_candidates(request: ConcreteCandidatesRequest) -> dict:
     Round 1 of the Concrete protocol.
 
     Returns ALL POIs in the requested category — no user location is used.
-    The client will later use these POI coordinates (which are public data)
-    to build the encrypted distance arguments locally.
     """
     total_timer = StepTimer()
 
@@ -66,15 +64,15 @@ def execute_concrete_candidates(request: ConcreteCandidatesRequest) -> dict:
 
 def execute_concrete_evaluation(request: ConcreteEvaluationRequest) -> dict:
     """
-    Round 2 of the Concrete protocol.
+    Round 2 of the Concrete protocol — optimized batch version.
 
-    The server receives only:
-      - evaluation_keys_b64: the FHE evaluation keys (public, contains no location)
-      - items: a list of encrypted public_args, one per POI
-               (each encryptes both the user's coords and the POI's coords together)
+    The server receives:
+      - evaluation_keys_b64: FHE evaluation keys (loaded ONCE)
+      - encrypted_user_coords_b64: encrypted (qx, qy) (loaded ONCE)
+      - items: list of POI candidates with CLEAR (px, py) integers
 
-    The server evaluates the FHE distance circuit for each item and returns
-    the encrypted results. It never sees any plaintext coordinate.
+    The server evaluates the FHE distance circuit for each POI and returns
+    the encrypted results. It never sees plaintext user coordinates.
     """
     total_timer = StepTimer()
 
@@ -87,25 +85,11 @@ def execute_concrete_evaluation(request: ConcreteEvaluationRequest) -> dict:
         ) from exc
 
     evaluation_timer = StepTimer()
-    encrypted_results = []
-
-    for item in request.items:
-        encrypted_distance = runtime.run_distance(
-            serialized_evaluation_keys_b64=request.evaluation_keys_b64,
-            serialized_public_args_b64=item.public_args_b64,
-        )
-
-        encrypted_results.append(
-            {
-                "id": item.id,
-                "name": item.name,
-                "category": item.category,
-                "latitude": item.latitude,
-                "longitude": item.longitude,
-                "encrypted_distance": encrypted_distance,
-            }
-        )
-
+    encrypted_results = runtime.run_distance_batch(
+        evaluation_keys_b64=request.evaluation_keys_b64,
+        encrypted_user_coords_b64=request.encrypted_user_coords_b64,
+        items=request.items,
+    )
     evaluation_ms = evaluation_timer.elapsed_ms()
     total_ms = total_timer.elapsed_ms()
 

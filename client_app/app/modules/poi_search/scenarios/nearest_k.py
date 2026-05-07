@@ -38,8 +38,9 @@ async def _execute_single_scheme(request: NearestKClientRequest) -> dict:
     # -------------------------------------------------------------------------
     # Concrete — two-round protocol
     # Round 1: fetch all POIs in the category (no location sent).
-    # Round 2: client encrypts (user_coords, poi_coords) together and asks the
-    #          server to evaluate the FHE distance circuit.
+    # Round 2: client sends encrypted_user_coords ONCE + the list of POI
+    #          coordinates as clear integers. Server evaluates the FHE distance
+    #          circuit for each (encrypted_qx, encrypted_qy, px, py).
     # -------------------------------------------------------------------------
     if request.scheme == "concrete":
         prepare_timer = StepTimer()
@@ -50,7 +51,7 @@ async def _execute_single_scheme(request: NearestKClientRequest) -> dict:
         )
         prepare_query_ms = prepare_timer.elapsed_ms()
 
-        # Round 1 — category-only request: the server learns the category and k,
+        # Round 1 — category-only request: server learns the category and k,
         # but NOT the user's location.
         candidate_fetch_timer = StepTimer()
         candidate_response = await post_to_service_provider(
@@ -58,13 +59,11 @@ async def _execute_single_scheme(request: NearestKClientRequest) -> dict:
             {
                 "category": request.category,
                 "k": request.k,
-                # No latitude_m / longitude_m here.
             },
         )
         candidate_fetch_ms = candidate_fetch_timer.elapsed_ms()
 
-        # Client builds encrypted distance arguments using its PRIVATE coords
-        # + the public POI coords. The server will only ever see the ciphertext.
+        # Build items with plain (px, py) — no encryption per candidate.
         build_public_args_timer = StepTimer()
         items = adapter.build_public_args_for_candidates(
             prepared["encrypted_query"]["metadata"],
@@ -73,12 +72,13 @@ async def _execute_single_scheme(request: NearestKClientRequest) -> dict:
         )
         build_public_args_ms = build_public_args_timer.elapsed_ms()
 
-        # Round 2 — send only evaluation keys + encrypted arguments, no plaintext coords.
+        # Round 2 — send eval keys + encrypted user coords (ONCE) + items.
         evaluate_call_timer = StepTimer()
         raw_response = await post_to_service_provider(
             "/service/poi/concrete/evaluate",
             {
                 "evaluation_keys_b64": prepared["encrypted_query"]["metadata"]["evaluation_keys"],
+                "encrypted_user_coords_b64": prepared["encrypted_query"]["metadata"]["encrypted_user_coords"],
                 "requested_k": request.k,
                 "items": items,
             },
@@ -144,11 +144,7 @@ async def _execute_single_scheme(request: NearestKClientRequest) -> dict:
         }
 
     # -------------------------------------------------------------------------
-    # BFV / CKKS — single-round protocol
-    # The client sends only the encrypted ciphertext + public context.
-    # The server computes encrypted distances over ALL POIs in the category
-    # and returns all encrypted results.
-    # The client decrypts and sorts locally.
+    # BFV / CKKS / OpenFHE — single-round protocol (unchanged)
     # -------------------------------------------------------------------------
     prepare_timer = StepTimer()
     prepared = adapter.prepare_query(
@@ -162,10 +158,8 @@ async def _execute_single_scheme(request: NearestKClientRequest) -> dict:
         "category": request.category,
         "k": request.k,
         "scheme": request.scheme,
-        # plaintext_query is None for HE schemes — never sent.
         "plaintext_query": prepared["plaintext_query"],
         "encrypted_query": prepared["encrypted_query"],
-        # No latitude_m / longitude_m in metadata — see bfv_client.py / ckks_client.py.
     }
 
     service_timer = StepTimer()
@@ -175,7 +169,6 @@ async def _execute_single_scheme(request: NearestKClientRequest) -> dict:
     )
     service_call_ms = service_timer.elapsed_ms()
 
-    # Client decrypts and sorts locally.
     parse_timer = StepTimer()
     parsed_results = adapter.parse_response(
         raw_response,

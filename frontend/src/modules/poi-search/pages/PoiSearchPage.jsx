@@ -6,6 +6,9 @@ import "../styles/poi-search.css";
 const API_URL = "http://127.0.0.1:8000/client/poi/nearest-k";
 const SEARCH_BY_NAME_URL = "http://127.0.0.1:8000/client/poi/search-by-name";
 
+// 10 minutes — Concrete FHE evaluation can be slow.
+const REQUEST_TIMEOUT_MS = 600000;
+
 const initialForm = {
   searchType: "category",
   category: "bank",
@@ -213,6 +216,7 @@ export default function PoiSearchPage() {
           headers: {
             Authorization: `Bearer ${token}`,
           },
+          timeout: REQUEST_TIMEOUT_MS,
         });
 
         const data = response.data;
@@ -236,6 +240,7 @@ export default function PoiSearchPage() {
         headers: {
           Authorization: `Bearer ${token}`,
         },
+        timeout: REQUEST_TIMEOUT_MS,
       });
 
       const data = response.data;
@@ -462,8 +467,9 @@ export default function PoiSearchPage() {
 
                       {form.scheme === "concrete" && (
                         <div className="full-width poi-alert">
-                          Concrete is currently unstable. Use it separately only if
-                          you want to test it on its own.
+                          Concrete uses TFHE — slower than CKKS/BFV but supports
+                          exact integer arithmetic. Each query may take several
+                          minutes; please be patient.
                         </div>
                       )}
 
@@ -516,6 +522,8 @@ export default function PoiSearchPage() {
                       ? "Searching by name..."
                       : form.scheme === "all"
                       ? "Running plaintext, CKKS, BFV, and OpenFHE..."
+                      : form.scheme === "concrete"
+                      ? "Running Concrete FHE — this may take several minutes..."
                       : "Searching for nearest POIs..."}
                   </p>
                 )}

@@ -115,11 +115,13 @@ class ConcreteEvaluationItem(BaseModel):
     category: str
     latitude: float
     longitude: float
-    public_args_b64: str
+    px: int
+    py: int
 
 
 class ConcreteEvaluationRequest(BaseModel):
     evaluation_keys_b64: str
+    encrypted_user_coords_b64: str
     requested_k: int
     items: List[ConcreteEvaluationItem]
 

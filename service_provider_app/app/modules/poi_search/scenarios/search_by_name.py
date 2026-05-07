@@ -1,3 +1,4 @@
+# service_provider_app/app/modules/poi_search/scenarios/search_by_name.py
 from ..repository import PoiRepository
 
 repository = PoiRepository()

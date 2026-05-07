@@ -12,9 +12,6 @@ from .quantization import (
 quant_config = QuantizationConfig(scale_divisor=100)
 
 # Local origin after quantization.
-# Dataset area:
-# lon_m ≈ 2362254 -> 23622 after /100
-# lat_m ≈ 5741384 -> 57414 after /100
 ORIGIN_X_Q = 23600
 ORIGIN_Y_Q = 57400
 
@@ -35,12 +32,16 @@ class ConcreteClientAdapter(ClientCryptoAdapter):
         qx = quantize_metric_coordinate(float(longitude), quant_config) - ORIGIN_X_Q
         qy = quantize_metric_coordinate(float(latitude), quant_config) - ORIGIN_Y_Q
 
+        # Encrypt user coords ONCE (this is the heavy part)
+        encrypted_user_coords_b64 = runtime.encrypt_user_coords(qx, qy)
+
         return {
             "plaintext_query": None,
             "encrypted_query": {
                 "payload": None,
                 "metadata": {
                     "evaluation_keys": runtime.serialize_evaluation_keys(),
+                    "encrypted_user_coords": encrypted_user_coords_b64,
                     "requested_k": k,
                     "top_k_on_client": True,
                 },
@@ -62,11 +63,11 @@ class ConcreteClientAdapter(ClientCryptoAdapter):
         candidates: list[dict],
         local_state: dict,
     ) -> list[dict]:
-        runtime = local_state["runtime"]
-
-        qx = int(local_state["qx"])
-        qy = int(local_state["qy"])
-
+        """
+        For Concrete, after the optimization, the client does NOT encrypt anything
+        per candidate. It only sends the POI coordinates as plain (clear) integers.
+        The user's coordinates are encrypted ONCE in prepare_query.
+        """
         items = []
         for candidate in candidates:
             px = (
@@ -78,8 +79,6 @@ class ConcreteClientAdapter(ClientCryptoAdapter):
                 - ORIGIN_Y_Q
             )
 
-            public_args_b64 = runtime.encrypt_distance_call(qx, qy, px, py)
-
             items.append(
                 {
                     "id": candidate["id"],
@@ -87,7 +86,8 @@ class ConcreteClientAdapter(ClientCryptoAdapter):
                     "category": candidate["category"],
                     "latitude": candidate["latitude"],
                     "longitude": candidate["longitude"],
-                    "public_args_b64": public_args_b64,
+                    "px": int(px),
+                    "py": int(py),
                 }
             )
 

@@ -1,5 +1,6 @@
 #C:\Users\Mariana Ionela\MATERII\AN 4 - UTCN\LICENTA - PYTHON\client_app\app\core\concrete_client_runtime.py
 import base64
+import json
 from pathlib import Path
 
 from concrete import fhe
@@ -39,19 +40,34 @@ class ConcreteClientRuntime:
         self.ensure_keys()
         return _b64encode(self.client.evaluation_keys.serialize())
 
-    def encrypt_distance_call(self, qx: int, qy: int, px: int, py: int) -> str:
+    def encrypt_user_coords(self, qx: int, qy: int) -> str:
+        """
+        Encrypts the user's (qx, qy) ONCE per query.
+        Returns a base64-encoded JSON payload with the two encrypted Value objects.
+
+        Format:
+          {
+            "enc_qx": "<b64 of Value>",
+            "enc_qy": "<b64 of Value>"
+          }
+        """
         self.ensure_keys()
 
-        public_args = self.client.encrypt(qx, qy, px, py)
+        # client.encrypt expects same number of args as the circuit signature
+        # (4 args). For this call we only care about the first two (encrypted).
+        # Pass dummy 0s for the clear positions; we will not transmit them.
+        encrypted_args = self.client.encrypt(int(qx), int(qy), 0, 0)
 
-        return _b64encode(public_args.serialize())
+        payload = {
+            "enc_qx": _b64encode(encrypted_args[0].serialize()),
+            "enc_qy": _b64encode(encrypted_args[1].serialize()),
+        }
+        return _b64encode(json.dumps(payload).encode("utf-8"))
 
     def decrypt_distance(self, serialized_public_result_b64: str) -> int:
         self.ensure_keys()
-
-        public_result = fhe.PublicResult.deserialize(
+        public_result = fhe.Value.deserialize(
             _b64decode(serialized_public_result_b64)
         )
-
         result = self.client.decrypt(public_result)
         return int(result)
