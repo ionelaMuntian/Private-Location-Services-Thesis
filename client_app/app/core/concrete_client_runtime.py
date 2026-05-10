@@ -1,4 +1,5 @@
-#C:\Users\Mariana Ionela\MATERII\AN 4 - UTCN\LICENTA - PYTHON\client_app\app\core\concrete_client_runtime.py
+# client_app/app/core/concrete_client_runtime.py
+
 import base64
 import json
 from pathlib import Path
@@ -8,7 +9,6 @@ from concrete import fhe
 CLIENT_APP_DIR = Path(__file__).resolve().parents[2]
 ARTIFACTS_DIR = CLIENT_APP_DIR / ".artifacts" / "concrete"
 CLIENT_SPECS_PATH = ARTIFACTS_DIR / "client_specs.bin"
-
 
 def _b64encode(data: bytes) -> str:
     return base64.b64encode(data).decode("utf-8")
@@ -37,41 +37,98 @@ class ConcreteClientRuntime:
             self._keys_generated = True
 
     def serialize_evaluation_keys(self) -> str:
+        """
+        Backward-compatible base64 version.
+        The optimized gRPC flow should use serialize_evaluation_keys_bytes().
+        """
         self.ensure_keys()
         return _b64encode(self.client.evaluation_keys.serialize())
 
     def serialize_evaluation_keys_bytes(self) -> bytes:
+        """
+        Used by streaming gRPC upload.
+
+        This avoids sending Concrete evaluation keys as huge base64 JSON strings.
+        """
         self.ensure_keys()
         return self.client.evaluation_keys.serialize()
 
     def encrypt_user_coords(self, qx: int, qy: int) -> str:
         """
-        Encrypts the user's (qx, qy) ONCE per query.
-        Returns a base64-encoded JSON payload with the two encrypted Value objects.
+        Encrypts the user's coordinates once.
 
-        Format:
-          {
-            "enc_qx": "<b64 of Value>",
-            "enc_qy": "<b64 of Value>"
-          }
+        Current Concrete circuit signature has 8 inputs:
+
+          qx_rel, qy_rel,
+          p1x_rel, p1y_rel, p1_id,
+          p2x_rel, p2y_rel, p2_id
+
+        Only qx_rel and qy_rel are encrypted user values.
+        The remaining values are clear/public POI inputs, so dummy values are
+        passed here only to satisfy client.encrypt().
         """
         self.ensure_keys()
 
-        # client.encrypt expects same number of args as the circuit signature
-        # (4 args). For this call we only care about the first two (encrypted).
-        # Pass dummy 0s for the clear positions; we will not transmit them.
-        encrypted_args = self.client.encrypt(int(qx), int(qy), 0, 0)
+        encrypted_args = self.client.encrypt(
+            int(qx),
+            int(qy),
+            0,
+            0,
+            1,
+            0,
+            0,
+            2,
+        )
 
         payload = {
             "enc_qx": _b64encode(encrypted_args[0].serialize()),
             "enc_qy": _b64encode(encrypted_args[1].serialize()),
         }
+
         return _b64encode(json.dumps(payload).encode("utf-8"))
 
-    def decrypt_distance(self, serialized_public_result_b64: str) -> int:
+    def decrypt_sorted_top2(self, encrypted_sorted_result: dict) -> list[dict]:
+        """
+        Decrypts the already-sorted encrypted result returned by the server.
+
+        The client does NOT sort here. The ordering was produced by the Concrete
+        circuit on the service-provider side.
+
+        Expected input:
+          {
+            "first_id": "...",
+            "first_dist2": "...",
+            "second_id": "...",
+            "second_dist2": "..."
+          }
+        """
         self.ensure_keys()
-        public_result = fhe.Value.deserialize(
-            _b64decode(serialized_public_result_b64)
+
+        first_id_value = fhe.Value.deserialize(
+            _b64decode(encrypted_sorted_result["first_id"])
         )
-        result = self.client.decrypt(public_result)
-        return int(result)
+        first_dist2_value = fhe.Value.deserialize(
+            _b64decode(encrypted_sorted_result["first_dist2"])
+        )
+        second_id_value = fhe.Value.deserialize(
+            _b64decode(encrypted_sorted_result["second_id"])
+        )
+        second_dist2_value = fhe.Value.deserialize(
+            _b64decode(encrypted_sorted_result["second_dist2"])
+        )
+
+        first_id = int(self.client.decrypt(first_id_value))
+        first_dist2 = int(self.client.decrypt(first_dist2_value))
+        second_id = int(self.client.decrypt(second_id_value))
+        second_dist2 = int(self.client.decrypt(second_dist2_value))
+
+        return [
+            {
+                "id": first_id,
+                "dist2": first_dist2,
+            },
+            {
+                "id": second_id,
+                "dist2": second_dist2,
+            },
+        ]

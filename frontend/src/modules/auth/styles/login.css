@@ -351,4 +351,14 @@
   .login-toggle {
     grid-template-columns: 1fr;
   }
+
+  .login-admin-hint {
+  border: 1px solid var(--login-border);
+  background: rgba(28, 105, 115, 0.07);
+  color: var(--login-green);
+  border-radius: 14px;
+  padding: 11px 13px;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
 }

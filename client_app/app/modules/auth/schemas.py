@@ -1,5 +1,4 @@
 # client_app/app/modules/auth/schemas.py
-
 from pydantic import BaseModel, EmailStr, Field
 
 
@@ -24,3 +23,14 @@ class UserResponse(BaseModel):
     username: str
     email: str
     is_active: bool
+
+
+class UserListItem(BaseModel):
+    id: int
+    username: str
+    email: str
+    is_active: bool
+
+
+class UserListResponse(BaseModel):
+    users: list[UserListItem]

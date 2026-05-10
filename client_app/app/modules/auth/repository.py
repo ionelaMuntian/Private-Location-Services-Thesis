@@ -97,3 +97,40 @@ class AuthRepository:
             conn.commit()
 
         return dict(row)
+
+    def create_user_if_not_exists(
+        self,
+        username: str,
+        email: str,
+        password_hash: str,
+    ) -> dict:
+        existing = self.get_user_by_username(username)
+
+        if existing is not None:
+            return {
+                "id": int(existing["id"]),
+                "username": existing["username"],
+                "email": existing["email"],
+                "is_active": bool(existing["is_active"]),
+            }
+
+        return self.create_user(
+            username=username,
+            email=email,
+            password_hash=password_hash,
+        )
+
+    def list_users(self) -> list[dict]:
+        sql = f"""
+        SELECT id, username, email, is_active
+        FROM {self.schema}.users
+        WHERE username <> 'admin'
+        ORDER BY username;
+        """
+
+        with get_auth_connection() as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                cur.execute(sql)
+                rows = cur.fetchall()
+
+        return [dict(row) for row in rows]

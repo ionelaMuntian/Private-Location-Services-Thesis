@@ -6,8 +6,8 @@ import "../styles/poi-search.css";
 const API_URL = "http://127.0.0.1:8000/client/poi/nearest-k";
 const SEARCH_BY_NAME_URL = "http://127.0.0.1:8000/client/poi/search-by-name";
 
-// 10 minutes — Concrete FHE evaluation can be slow.
-const REQUEST_TIMEOUT_MS = 600000;
+//  minutes — Concrete FHE evaluation can be slow.
+const REQUEST_TIMEOUT_MS = 1800000;
 
 const initialForm = {
   searchType: "category",

@@ -1,3 +1,4 @@
+# client_app/app/infrastructure/auth_db.py
 from contextlib import contextmanager
 from typing import Generator
 

@@ -1,5 +1,4 @@
 # service_provider_app/app/modules/poi_search/schemas.py
-# service_provider_app/app/modules/poi_search/schemas.py
 
 from typing import Any, List, Literal
 
@@ -51,10 +50,18 @@ class ServiceProviderNearestKRequest(BaseModel):
         if self.scheme == "plaintext" and self.plaintext_query is None:
             raise ValueError("plaintext_query is required when scheme='plaintext'")
 
-        if self.scheme in {"ckks", "bfv", "concrete", "openfhe"} and self.encrypted_query is None:
-            raise ValueError(f"encrypted_query is required when scheme='{self.scheme}'")
+        if (
+            self.scheme in {"ckks", "bfv", "concrete", "openfhe"}
+            and self.encrypted_query is None
+        ):
+            raise ValueError(
+                f"encrypted_query is required when scheme='{self.scheme}'"
+            )
 
-        if self.scheme in {"ckks", "bfv", "concrete", "openfhe"} and self.encrypted_query is not None:
+        if (
+            self.scheme in {"ckks", "bfv", "concrete", "openfhe"}
+            and self.encrypted_query is not None
+        ):
             forbidden = {
                 "query_latitude_m",
                 "query_longitude_m",
@@ -159,9 +166,25 @@ class ConcreteEvaluationResultItem(BaseModel):
     encrypted_distance: str
 
 
+class ConcreteSortedResult(BaseModel):
+    # Encrypted outputs of the Concrete top-2 sorting circuit.
+    # The server does not decrypt these values.
+    first_id: str
+    first_dist2: str
+    second_id: str
+    second_dist2: str
+
+
 class ConcreteEvaluationResponse(BaseModel):
     scheme: SingleSchemeType
-    encrypted_results: List[ConcreteEvaluationResultItem]
+
+    # Old response format: encrypted distance per POI.
+    # Kept optional for backward compatibility.
+    encrypted_results: List[ConcreteEvaluationResultItem] | None = None
+
+    # New response format: already sorted encrypted outputs from the Concrete circuit.
+    encrypted_sorted_result: ConcreteSortedResult | None = None
+
     metadata: dict[str, Any]
     metrics: MetricsEnvelope
 

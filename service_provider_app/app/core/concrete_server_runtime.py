@@ -42,51 +42,25 @@ class ConcreteServerRuntime:
     def __init__(self) -> None:
         self.server = fhe.Server.load(SERVER_PATH)
 
-    def run_distance_batch(
-        self,
-        evaluation_keys_b64: str,
-        encrypted_user_coords_b64: str,
-        items: list,
-    ) -> list:
-        """
-        Backward-compatible version.
-
-        This method receives the Concrete evaluation keys as base64 inside the
-        request body. It still works, but it is not recommended because the
-        evaluation keys are extremely large and can create huge JSON/gRPC payloads.
-
-        Prefer run_distance_batch_with_key_bytes(), where the keys are uploaded
-        separately through streaming gRPC.
-        """
-        evaluation_keys_bytes = _b64decode(evaluation_keys_b64)
-
-        return self.run_distance_batch_with_key_bytes(
-            evaluation_keys_bytes=evaluation_keys_bytes,
-            encrypted_user_coords_b64=encrypted_user_coords_b64,
-            items=items,
-        )
-
-    def run_distance_batch_with_key_bytes(
+    def run_sorted_top2_with_key_bytes(
         self,
         evaluation_keys_bytes: bytes,
         encrypted_user_coords_b64: str,
         items: list,
-    ) -> list:
+    ) -> dict:
         """
-        Optimized Concrete batch evaluation.
+        Runs the fixed top-2 Concrete sorting circuit.
 
-        The evaluation keys are received as raw bytes, usually loaded from the
-        service-provider key store after they were uploaded once using streaming
-        gRPC.
-
-        The server:
-          - deserializes evaluation keys once
-          - deserializes encrypted user coordinates once
-          - evaluates the Concrete distance circuit for each candidate POI
-          - returns encrypted distances
-
-        The service provider never sees the plaintext user coordinates.
+        The server performs the comparison and ordering inside the FHE circuit.
+        It does not learn which POI is closer because the sorted IDs and
+        distances are encrypted outputs.
         """
+        if len(items) < 2:
+            raise ValueError("Concrete server-side sorting requires exactly 2 candidates.")
+
+        item1 = items[0]
+        item2 = items[1]
+
         evaluation_keys = fhe.EvaluationKeys.deserialize(evaluation_keys_bytes)
 
         user_payload = json.loads(
@@ -96,32 +70,31 @@ class ConcreteServerRuntime:
         encrypted_qx = fhe.Value.deserialize(_b64decode(user_payload["enc_qx"]))
         encrypted_qy = fhe.Value.deserialize(_b64decode(user_payload["enc_qy"]))
 
-        results = []
+        result = self.server.run(
+            encrypted_qx,
+            encrypted_qy,
+            int(item1.px),
+            int(item1.py),
+            int(item1.id),
+            int(item2.px),
+            int(item2.py),
+            int(item2.id),
+            evaluation_keys=evaluation_keys,
+        )
 
-        for item in items:
-            px = int(item.px)
-            py = int(item.py)
+        if not isinstance(result, tuple):
+            result = (result,)
 
-            result = self.server.run(
-                encrypted_qx,
-                encrypted_qy,
-                px,
-                py,
-                evaluation_keys=evaluation_keys,
+        if len(result) != 4:
+            raise RuntimeError(
+                f"Expected 4 encrypted outputs from Concrete top-2 circuit, got {len(result)}."
             )
 
-            if isinstance(result, tuple):
-                result = result[0]
+        first_id, first_dist2, second_id, second_dist2 = result
 
-            results.append(
-                {
-                    "id": item.id,
-                    "name": item.name,
-                    "category": item.category,
-                    "latitude": item.latitude,
-                    "longitude": item.longitude,
-                    "encrypted_distance": _b64encode(result.serialize()),
-                }
-            )
-
-        return results
+        return {
+            "first_id": _b64encode(first_id.serialize()),
+            "first_dist2": _b64encode(first_dist2.serialize()),
+            "second_id": _b64encode(second_id.serialize()),
+            "second_dist2": _b64encode(second_dist2.serialize()),
+        }

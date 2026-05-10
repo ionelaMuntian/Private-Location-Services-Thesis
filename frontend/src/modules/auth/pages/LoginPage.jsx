@@ -1,3 +1,4 @@
+// frontend/src/modules/auth/pages/LoginPage.jsx
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import PageShell from "../../../components/PageShell";
@@ -25,6 +26,14 @@ export default function LoginPage() {
   const handleModeChange = (nextMode) => {
     setMode(nextMode);
     resetMessages();
+  };
+
+  const redirectAfterAuth = (authUsername) => {
+    if (authUsername === "admin") {
+      navigate("/admin-dashboard");
+    } else {
+      navigate("/home");
+    }
   };
 
   const handleLogin = async (event) => {
@@ -55,7 +64,7 @@ export default function LoginPage() {
       localStorage.setItem("username", username);
 
       setSuccessMessage("Login successful.");
-      navigate("/home");
+      redirectAfterAuth(username);
     } catch (error) {
       setErrorMessage(error.message || "Login failed.");
     } finally {
@@ -109,7 +118,7 @@ export default function LoginPage() {
       localStorage.setItem("username", username);
 
       setSuccessMessage("Account created successfully.");
-      navigate("/home");
+      redirectAfterAuth(username);
     } catch (error) {
       setErrorMessage(error.message || "Sign up failed.");
     } finally {
@@ -140,6 +149,7 @@ export default function LoginPage() {
             <span>Trusted Client</span>
             <span>Encrypted Queries</span>
             <span>POI Search</span>
+            <span>Company Compliance</span>
           </div>
         </section>
 
@@ -149,7 +159,7 @@ export default function LoginPage() {
               <h2>{mode === "login" ? "Welcome back" : "Create account"}</h2>
               <p className="login-subtitle">
                 {mode === "login"
-                  ? "Sign in to access encrypted location-based search."
+                  ? "Sign in to access encrypted location-based services."
                   : "Create an account to start using the trusted client."}
               </p>
             </div>
@@ -162,6 +172,7 @@ export default function LoginPage() {
               >
                 Log in
               </button>
+
               <button
                 type="button"
                 className={`toggle-btn ${mode === "signup" ? "active" : ""}`}
@@ -212,6 +223,12 @@ export default function LoginPage() {
                   required
                 />
               </div>
+
+              {mode === "login" && (
+                <div className="login-admin-hint">
+                  Company admin demo: <strong>admin</strong> / <strong>admin</strong>
+                </div>
+              )}
 
               {errorMessage && (
                 <p className="auth-message auth-error">{errorMessage}</p>

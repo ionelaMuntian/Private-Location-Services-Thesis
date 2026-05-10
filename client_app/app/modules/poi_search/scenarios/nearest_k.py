@@ -42,24 +42,6 @@ async def _execute_single_scheme(request: NearestKClientRequest) -> dict:
     adapter = get_client_adapter(request.scheme)
     total_timer = StepTimer()
 
-    # -------------------------------------------------------------------------
-    # Concrete — optimized protocol over gRPC
-    #
-    # Step 1: Prepare query on trusted client side.
-    #         The user coordinates are encrypted once.
-    #
-    # Step 2: Upload Concrete evaluation keys using streaming gRPC.
-    #         This avoids sending hundreds of MB inside /concrete/evaluate.
-    #         The service provider returns a key_id.
-    #
-    # Step 3: Fetch category candidates.
-    #         No user location is sent.
-    #
-    # Step 4: Send key_id + encrypted user coordinates + clear POI coordinates.
-    #         The service provider evaluates encrypted distances.
-    #
-    # Step 5: Client decrypts distances and sorts locally.
-    # -------------------------------------------------------------------------
     if request.scheme == "concrete":
         prepare_timer = StepTimer()
         prepared = adapter.prepare_query(
@@ -75,13 +57,9 @@ async def _execute_single_scheme(request: NearestKClientRequest) -> dict:
         if evaluation_keys_bytes is None:
             raise HTTPException(
                 status_code=500,
-                detail=(
-                    "Concrete local_state is missing evaluation_keys_bytes. "
-                    "Check ConcreteClientAdapter.prepare_query()."
-                ),
+                detail="Concrete local_state is missing evaluation_keys_bytes.",
             )
 
-        # Step 2 — upload Concrete evaluation keys through streaming gRPC.
         upload_keys_timer = StepTimer()
         key_response = await upload_concrete_keys_to_service_provider(
             evaluation_keys_bytes=evaluation_keys_bytes,
@@ -95,8 +73,6 @@ async def _execute_single_scheme(request: NearestKClientRequest) -> dict:
                 detail=f"Concrete key upload did not return key_id: {key_response}",
             )
 
-        # Step 3 — category-only request: server learns the category and k,
-        # but not the user's location.
         candidate_fetch_timer = StepTimer()
         candidate_response = await post_to_service_provider(
             "/service/poi/concrete/candidates",
@@ -107,8 +83,6 @@ async def _execute_single_scheme(request: NearestKClientRequest) -> dict:
         )
         candidate_fetch_ms = candidate_fetch_timer.elapsed_ms()
 
-        # Step 4 preparation — build clear public POI coordinates.
-        # No encryption per candidate is done here.
         build_public_args_timer = StepTimer()
         items = adapter.build_public_args_for_candidates(
             prepared["encrypted_query"]["metadata"],
@@ -117,8 +91,6 @@ async def _execute_single_scheme(request: NearestKClientRequest) -> dict:
         )
         build_public_args_ms = build_public_args_timer.elapsed_ms()
 
-        # Step 4 — send only key_id, encrypted user coords, and POI coordinates.
-        # The huge evaluation keys are no longer included in this payload.
         evaluate_call_timer = StepTimer()
         raw_response = await post_to_service_provider(
             "/service/poi/concrete/evaluate",
@@ -133,7 +105,6 @@ async def _execute_single_scheme(request: NearestKClientRequest) -> dict:
         )
         evaluate_call_ms = evaluate_call_timer.elapsed_ms()
 
-        # Step 5 — client decrypts and sorts locally.
         parse_timer = StepTimer()
         parsed_results = adapter.parse_response(
             raw_response,
@@ -197,9 +168,6 @@ async def _execute_single_scheme(request: NearestKClientRequest) -> dict:
             "metrics": metrics,
         }
 
-    # -------------------------------------------------------------------------
-    # Plaintext / BFV / CKKS / OpenFHE — single-round protocol
-    # -------------------------------------------------------------------------
     prepare_timer = StepTimer()
     prepared = adapter.prepare_query(
         latitude=request.latitude_m,
@@ -270,8 +238,6 @@ async def execute_nearest_k(request: NearestKClientRequest) -> dict:
 
     runs = []
 
-    # Concrete is intentionally not included in "all" because it is much heavier
-    # and uses a separate multi-step protocol.
     for scheme in ["plaintext", "ckks", "bfv", "openfhe"]:
         scheme_request = NearestKClientRequest(
             category=request.category,

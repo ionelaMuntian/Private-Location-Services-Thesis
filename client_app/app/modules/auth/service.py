@@ -12,6 +12,18 @@ class AuthService:
     def initialize_auth_storage(self) -> None:
         self.repository.create_schema_and_table_if_not_exists()
 
+        # Demo company administrator account.
+        # Credentials:
+        #   username: admin
+        #   password: admin
+        admin_password_hash = hash_password("admin")
+
+        self.repository.create_user_if_not_exists(
+            username="admin",
+            email="admin@local.test",
+            password_hash=admin_password_hash,
+        )
+
     def register_user(self, username: str, email: str, password: str) -> dict:
         existing_username = self.repository.get_user_by_username(username)
         if existing_username is not None:
@@ -28,6 +40,7 @@ class AuthService:
             )
 
         password_hash = hash_password(password)
+
         return self.repository.create_user(
             username=username,
             email=email,
@@ -78,3 +91,7 @@ class AuthService:
             "email": user["email"],
             "is_active": bool(user["is_active"]),
         }
+
+    def list_users(self) -> dict:
+        users = self.repository.list_users()
+        return {"users": users}

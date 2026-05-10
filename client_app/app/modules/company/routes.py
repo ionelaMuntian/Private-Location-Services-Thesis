@@ -1,15 +1,25 @@
-from fastapi import APIRouter, Depends
+# client_app/app/modules/company/routes.py
+from fastapi import APIRouter, Depends, Query
 
 from ..auth.dependencies import get_current_user
 from .schemas import (
+    AddEmployeeRequest,
+    AdminCompaniesResponse,
     CompanyResponse,
     CompanyUsersStatusResponse,
+    ComplianceJobResponse,
+    ComplianceJobStatusResponse,
     CreateCompanyRequest,
     JoinCompanyRequest,
+    MyCompaniesResponse,
     SaveEncryptedHomeRequest,
+    ShareEncryptedLocationRequest,
+    SubmitCompanyPartialDecryptionRequest,
     SubmitLocationStatusRequest,
+    SubmitUserPartialDecryptionRequest,
 )
 from .service import CompanyService
+
 
 router = APIRouter()
 service = CompanyService()
@@ -21,6 +31,28 @@ def create_company(
     current_user: dict = Depends(get_current_user),
 ):
     return service.create_company(request, current_user)
+
+
+@router.get("/admin/companies", response_model=AdminCompaniesResponse)
+def get_my_admin_companies(
+    current_user: dict = Depends(get_current_user),
+):
+    return service.get_my_admin_companies(current_user)
+
+
+@router.get("/my-companies", response_model=MyCompaniesResponse)
+def get_my_companies(
+    current_user: dict = Depends(get_current_user),
+):
+    return service.get_my_companies(current_user)
+
+
+@router.post("/employees")
+def add_employee(
+    request: AddEmployeeRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    return service.add_employee(request, current_user)
 
 
 @router.post("/companies/join")
@@ -53,3 +85,52 @@ def get_company_users_status(
     current_user: dict = Depends(get_current_user),
 ):
     return service.get_users_status(company_id, current_user)
+
+
+@router.post("/share-encrypted-location", response_model=ComplianceJobResponse)
+def share_encrypted_location(
+    request: ShareEncryptedLocationRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    return service.share_encrypted_location(request, current_user)
+
+
+@router.get("/compliance-jobs/{job_id}", response_model=ComplianceJobStatusResponse)
+def get_compliance_job_status(
+    job_id: int,
+    current_user: dict = Depends(get_current_user),
+):
+    return service.get_compliance_job_status(job_id, current_user)
+
+
+@router.post("/compliance-jobs/user-partial", response_model=ComplianceJobResponse)
+def submit_user_partial_decryption(
+    request: SubmitUserPartialDecryptionRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    return service.submit_user_partial_decryption(request, current_user)
+
+
+@router.post("/compliance-jobs/company-partial", response_model=ComplianceJobResponse)
+def submit_company_partial_decryption(
+    request: SubmitCompanyPartialDecryptionRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    return service.submit_company_partial_decryption(request, current_user)
+
+
+@router.post("/compliance-jobs/{job_id}/complete-demo")
+def complete_compliance_job_demo(
+    job_id: int,
+    final_at_home: bool = Query(...),
+    final_at_office: bool = Query(...),
+    final_in_country: bool = Query(...),
+    current_user: dict = Depends(get_current_user),
+):
+    return service.complete_compliance_job_demo(
+        job_id=job_id,
+        final_at_home=final_at_home,
+        final_at_office=final_at_office,
+        final_in_country=final_in_country,
+        current_user=current_user,
+    )

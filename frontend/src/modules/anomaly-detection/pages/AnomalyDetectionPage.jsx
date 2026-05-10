@@ -1,18 +1,24 @@
+// frontend/src/modules/anomaly-detection/pages/AnomalyDetectionPage.jsx
 import { useNavigate } from "react-router-dom";
-import PageShell from "../../../components/PageShell";
+import "../styles/anomaly-detection.css";
 
 export default function AnomalyDetectionPage() {
   const navigate = useNavigate();
 
   return (
-    <PageShell>
-      <div className="placeholder-page">
+    <div className="anomaly-page">
+      <section className="anomaly-card">
+        <p className="anomaly-kicker">Future Module</p>
         <h1>Impossible Travel Detection</h1>
-        <p>This module will be added next.</p>
-        <button className="secondary-btn" onClick={() => navigate("/home")}>
-          Back to dashboard
+        <p>
+          This module will later include encrypted anomaly detection for detecting
+          impossible travel patterns using privacy-preserving location histories.
+        </p>
+
+        <button type="button" onClick={() => navigate("/home")}>
+          Back to Dashboard
         </button>
-      </div>
-    </PageShell>
+      </section>
+    </div>
   );
 }

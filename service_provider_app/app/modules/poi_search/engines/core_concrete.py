@@ -1,4 +1,6 @@
 # service_provider_app/app/modules/poi_search/engines/core_concrete.py
+
+import base64
 from time import time
 from uuid import uuid4
 
@@ -14,7 +16,7 @@ from ..schemas import (
 
 repository = PoiRepository()
 
-# Keep Concrete small for testing/demo.
+# Fixed top-2 encrypted sorting circuit.
 CONCRETE_CANDIDATE_LIMIT = 2
 
 _CONCRETE_KEY_STORE: dict[str, dict] = {}
@@ -78,7 +80,6 @@ def _resolve_evaluation_keys_bytes(request: ConcreteEvaluationRequest) -> bytes:
         _cleanup_expired_keys()
 
         entry = _CONCRETE_KEY_STORE.get(request.key_id)
-
         if entry is None:
             raise HTTPException(
                 status_code=404,
@@ -91,8 +92,6 @@ def _resolve_evaluation_keys_bytes(request: ConcreteEvaluationRequest) -> bytes:
         return entry["evaluation_keys_bytes"]
 
     if request.evaluation_keys_b64:
-        import base64
-
         return base64.b64decode(request.evaluation_keys_b64.encode("utf-8"))
 
     raise HTTPException(
@@ -102,6 +101,12 @@ def _resolve_evaluation_keys_bytes(request: ConcreteEvaluationRequest) -> bytes:
 
 
 def execute_concrete_candidates(request: ConcreteCandidatesRequest) -> dict:
+    """
+    Returns exactly 2 candidate POIs.
+
+    The Concrete circuit is compiled for fixed top-2 sorting, so the number of
+    candidates must match the circuit size.
+    """
     total_timer = StepTimer()
 
     candidate_timer = StepTimer()
@@ -110,6 +115,15 @@ def execute_concrete_candidates(request: ConcreteCandidatesRequest) -> dict:
         limit=CONCRETE_CANDIDATE_LIMIT,
     )
     candidate_selection_ms = candidate_timer.elapsed_ms()
+
+    if len(candidates) < 2:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Concrete top-2 sorting requires at least 2 candidates in category "
+                f"'{request.category}', but found {len(candidates)}."
+            ),
+        )
 
     normalized = [
         {
@@ -121,7 +135,7 @@ def execute_concrete_candidates(request: ConcreteCandidatesRequest) -> dict:
             "lat_m": item["lat_m"],
             "lon_m": item["lon_m"],
         }
-        for item in candidates
+        for item in candidates[:2]
     ]
 
     total_ms = total_timer.elapsed_ms()
@@ -147,13 +161,30 @@ def execute_concrete_candidates(request: ConcreteCandidatesRequest) -> dict:
 
 
 def execute_concrete_evaluation(request: ConcreteEvaluationRequest) -> dict:
+    """
+    Performs server-side encrypted sorting for Concrete.
+
+    The server runs a Concrete circuit that compares the two encrypted distances
+    and returns encrypted sorted IDs/distances.
+
+    The client decrypts the already-sorted output. It does not sort.
+    """
     total_timer = StepTimer()
+
+    if len(request.items) != 2:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Concrete top-2 sorting requires exactly 2 items, "
+                f"but received {len(request.items)}."
+            ),
+        )
 
     runtime = _get_runtime()
     evaluation_keys_bytes = _resolve_evaluation_keys_bytes(request)
 
     evaluation_timer = StepTimer()
-    encrypted_results = runtime.run_distance_batch_with_key_bytes(
+    encrypted_sorted_result = runtime.run_sorted_top2_with_key_bytes(
         evaluation_keys_bytes=evaluation_keys_bytes,
         encrypted_user_coords_b64=request.encrypted_user_coords_b64,
         items=request.items,
@@ -163,11 +194,12 @@ def execute_concrete_evaluation(request: ConcreteEvaluationRequest) -> dict:
 
     return {
         "scheme": "concrete",
-        "encrypted_results": encrypted_results,
+        "encrypted_sorted_result": encrypted_sorted_result,
         "metadata": {
             "requested_k": request.requested_k,
             "candidate_count": len(request.items),
-            "top_k_on_client": True,
+            "top_k_on_server": True,
+            "sorting": "encrypted_top2_concrete_circuit",
         },
         "metrics": {
             "server": {
@@ -176,7 +208,7 @@ def execute_concrete_evaluation(request: ConcreteEvaluationRequest) -> dict:
             },
             "workload": {
                 "candidate_count": len(request.items),
-                "returned_count": len(encrypted_results),
+                "returned_count": min(request.requested_k, 2),
                 "k": request.requested_k,
                 "category": "",
             },
