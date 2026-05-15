@@ -14,8 +14,8 @@ const initialForm = {
   category: "bank",
   nameQuery: "",
   k: 2,
-  latitude_m: 5741384.185332346,
-  longitude_m: 2362254.8313645967,
+  latitude_m: 5902000.0,
+  longitude_m: 2622000.0,
   scheme: "plaintext",
 };
 

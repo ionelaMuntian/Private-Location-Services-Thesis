@@ -66,22 +66,22 @@ def sorted_top2_by_distance(
 
 def build_inputset() -> list[tuple[np.int64, ...]]:
     """
-    Small-range inputset.
+    Cluj-Napoca dataset range after quantization (÷1000) and origin shift:
+      lon_m_q - 2619 → relative X in [0, 7]
+      lat_m_q - 5899 → relative Y in [0, 5]
 
-    Important:
-    This circuit uses server-side encrypted comparison, so the numeric range
-    must be kept small. Runtime Concrete coordinates must also stay in this
-    small range.
+    Keeping values small is critical: larger ranges cause exponentially
+    bigger evaluation keys and slower PBS operations.
     """
     samples: list[tuple[np.int64, ...]] = []
 
     coord_values = [
         np.int64(0),
+        np.int64(1),
         np.int64(2),
         np.int64(4),
-        np.int64(8),
-        np.int64(12),
-        np.int64(15),
+        np.int64(6),
+        np.int64(7),
     ]
 
     id1 = np.int64(1)
@@ -93,11 +93,11 @@ def build_inputset() -> list[tuple[np.int64, ...]]:
                 (
                     qx,
                     qy,
-                    np.int64(2),
-                    np.int64(2),
+                    np.int64(1),
+                    np.int64(1),
                     id1,
-                    np.int64(12),
-                    np.int64(12),
+                    np.int64(6),
+                    np.int64(5),
                     id2,
                 )
             )
@@ -106,24 +106,24 @@ def build_inputset() -> list[tuple[np.int64, ...]]:
                 (
                     qx,
                     qy,
-                    np.int64(12),
-                    np.int64(12),
+                    np.int64(6),
+                    np.int64(5),
                     id1,
-                    np.int64(2),
-                    np.int64(2),
+                    np.int64(1),
+                    np.int64(1),
                     id2,
                 )
             )
 
     boundary_cases = [
-        (0, 0, 0, 0, 1, 15, 15, 2),
-        (15, 15, 0, 0, 1, 15, 15, 2),
-        (8, 8, 4, 4, 1, 12, 12, 2),
-        (8, 8, 12, 12, 1, 4, 4, 2),
-        (2, 14, 2, 14, 1, 14, 2, 2),
-        (14, 2, 2, 14, 1, 14, 2, 2),
-        (6, 6, 4, 4, 1, 8, 8, 2),
-        (6, 6, 8, 8, 1, 4, 4, 2),
+        (0, 0, 0, 0, 1, 7, 5, 2),
+        (7, 5, 0, 0, 1, 7, 5, 2),
+        (3, 3, 1, 1, 1, 6, 4, 2),
+        (3, 3, 6, 4, 1, 1, 1, 2),
+        (1, 4, 1, 4, 1, 6, 1, 2),
+        (6, 1, 1, 4, 1, 6, 1, 2),
+        (4, 2, 2, 1, 1, 5, 4, 2),
+        (4, 2, 5, 4, 1, 2, 1, 2),
     ]
 
     for case in boundary_cases:

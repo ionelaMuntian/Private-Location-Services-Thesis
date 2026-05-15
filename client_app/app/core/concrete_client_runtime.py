@@ -117,10 +117,13 @@ class ConcreteClientRuntime:
             _b64decode(encrypted_sorted_result["second_dist2"])
         )
 
-        first_id = int(self.client.decrypt(first_id_value))
-        first_dist2 = int(self.client.decrypt(first_dist2_value))
-        second_id = int(self.client.decrypt(second_id_value))
-        second_dist2 = int(self.client.decrypt(second_dist2_value))
+        first_id, first_dist2, second_id, second_dist2 = self.client.decrypt(
+            first_id_value, first_dist2_value, second_id_value, second_dist2_value
+        )
+        first_id = int(first_id)
+        first_dist2 = int(first_dist2)
+        second_id = int(second_id)
+        second_dist2 = int(second_dist2)
 
         return [
             {

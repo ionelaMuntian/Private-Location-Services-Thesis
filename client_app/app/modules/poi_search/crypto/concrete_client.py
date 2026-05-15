@@ -15,15 +15,14 @@ from .quantization import (
 # Therefore, we use coarser quantization than the old distance-only circuit.
 quant_config = QuantizationConfig(scale_divisor=1000)
 
-# Local origin after quantization for your dataset area.
-# Original values are around:
-#   lon_m ≈ 2,362,254 -> /1000 ≈ 2362
-#   lat_m ≈ 5,741,384 -> /1000 ≈ 5741
+# Local origin after quantization for the Cluj-Napoca dataset.
+# Actual data ranges (÷1000):
+#   lon_m_q: 2619..2626  →  relative X: 0..7
+#   lat_m_q: 5899..5904  →  relative Y: 0..5
 #
-# Relative coordinates become small values such as 0..15,
-# matching the range used in compile_distance_circuit.py.
-ORIGIN_X_Q = 2360
-ORIGIN_Y_Q = 5740
+# Both ranges fit within [0, 15], the range the Concrete circuit was compiled for.
+ORIGIN_X_Q = 2619
+ORIGIN_Y_Q = 5899
 
 
 class ConcreteClientAdapter(ClientCryptoAdapter):
