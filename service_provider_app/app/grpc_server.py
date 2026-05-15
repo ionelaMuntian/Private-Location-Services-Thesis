@@ -1,5 +1,4 @@
 # service_provider_app/app/grpc_server.py
-
 import asyncio
 import json
 from urllib.parse import parse_qs, urlparse
@@ -8,6 +7,8 @@ import grpc
 from pydantic import ValidationError
 
 from .generated import service_provider_pb2, service_provider_pb2_grpc
+from .modules.company.schemas import ComplianceEvaluationRequest
+from .modules.company.service import CompanyComplianceService
 from .modules.poi_search.engines.core_concrete import execute_concrete_upload_keys
 from .modules.poi_search.schemas import (
     ConcreteCandidatesRequest,
@@ -16,11 +17,9 @@ from .modules.poi_search.schemas import (
 )
 from .modules.poi_search.service import PoiSearchServiceProviderService
 
+poi_service = PoiSearchServiceProviderService()
+company_service = CompanyComplianceService()
 
-service = PoiSearchServiceProviderService()
-
-# Must stay below 2,147,483,647 bytes because gRPC options use signed int.
-# 1500 MB is enough for large encrypted responses without overflow.
 GRPC_MAX_MESSAGE_SIZE = 1500 * 1024 * 1024
 
 
@@ -59,21 +58,21 @@ class ServiceProviderGatewayServicer(
 
             if method == "POST" and clean_path == "/service/poi/nearest-k":
                 dto = ServiceProviderNearestKRequest(**payload)
-                result = service.nearest_k_by_category(dto)
+                result = poi_service.nearest_k_by_category(dto)
                 return _json_response(200, result)
 
             if method == "GET" and clean_path == "/service/poi/categories":
-                result = service.list_categories()
+                result = poi_service.list_categories()
                 return _json_response(200, result)
 
             if method == "POST" and clean_path == "/service/poi/concrete/candidates":
                 dto = ConcreteCandidatesRequest(**payload)
-                result = service.concrete_candidates(dto)
+                result = poi_service.concrete_candidates(dto)
                 return _json_response(200, result)
 
             if method == "POST" and clean_path == "/service/poi/concrete/evaluate":
                 dto = ConcreteEvaluationRequest(**payload)
-                result = service.concrete_evaluate(dto)
+                result = poi_service.concrete_evaluate(dto)
                 return _json_response(200, result)
 
             if method == "GET" and clean_path == "/service/poi/search-by-name":
@@ -89,7 +88,12 @@ class ServiceProviderGatewayServicer(
                 q = q_values[0]
                 limit = int(limit_values[0])
 
-                result = service.search_by_name(query=q, limit=limit)
+                result = poi_service.search_by_name(query=q, limit=limit)
+                return _json_response(200, result)
+
+            if method == "POST" and clean_path == "/service/company/compliance/evaluate":
+                dto = ComplianceEvaluationRequest(**payload)
+                result = company_service.evaluate_compliance(dto)
                 return _json_response(200, result)
 
             return _json_response(
@@ -116,17 +120,6 @@ class ServiceProviderGatewayServicer(
             )
 
     async def UploadConcreteKeys(self, request_iterator, context):
-        """
-        Streaming gRPC endpoint for Concrete evaluation keys.
-
-        Concrete evaluation keys are very large. Sending them as base64 inside
-        the normal JSON request caused the client container to be killed because
-        the request became hundreds of MB.
-
-        This endpoint receives the keys in chunks, stores them in memory through
-        execute_concrete_upload_keys(), and returns a key_id. The later
-        /service/poi/concrete/evaluate request sends only the key_id.
-        """
         try:
             buffer = bytearray()
             total_chunks = 0

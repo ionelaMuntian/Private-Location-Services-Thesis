@@ -7,16 +7,15 @@ from .schemas import (
     AdminCompaniesResponse,
     CompanyResponse,
     CompanyUsersStatusResponse,
-    ComplianceJobResponse,
     ComplianceJobStatusResponse,
     CreateCompanyRequest,
     JoinCompanyRequest,
     MyCompaniesResponse,
+    RunComplianceCheckResponse,
     SaveEncryptedHomeRequest,
-    ShareEncryptedLocationRequest,
-    SubmitCompanyPartialDecryptionRequest,
+    SaveLatestLocationRequest,
+    SaveLatestLocationResponse,
     SubmitLocationStatusRequest,
-    SubmitUserPartialDecryptionRequest,
 )
 from .service import CompanyService
 
@@ -63,6 +62,14 @@ def join_company(
     return service.join_company(request, current_user)
 
 
+@router.post("/latest-location", response_model=SaveLatestLocationResponse)
+def save_latest_location(
+    request: SaveLatestLocationRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    return service.save_latest_location(request, current_user)
+
+
 @router.post("/home-location")
 def save_encrypted_home_location(
     request: SaveEncryptedHomeRequest,
@@ -87,12 +94,20 @@ def get_company_users_status(
     return service.get_users_status(company_id, current_user)
 
 
-@router.post("/share-encrypted-location", response_model=ComplianceJobResponse)
-def share_encrypted_location(
-    request: ShareEncryptedLocationRequest,
+@router.post(
+    "/companies/{company_id}/employees/{user_id}/run-compliance-check",
+    response_model=RunComplianceCheckResponse,
+)
+async def run_employee_compliance_check(
+    company_id: int,
+    user_id: int,
     current_user: dict = Depends(get_current_user),
 ):
-    return service.share_encrypted_location(request, current_user)
+    return await service.run_employee_compliance_check(
+        company_id=company_id,
+        employee_user_id=user_id,
+        current_user=current_user,
+    )
 
 
 @router.get("/compliance-jobs/{job_id}", response_model=ComplianceJobStatusResponse)
@@ -101,22 +116,6 @@ def get_compliance_job_status(
     current_user: dict = Depends(get_current_user),
 ):
     return service.get_compliance_job_status(job_id, current_user)
-
-
-@router.post("/compliance-jobs/user-partial", response_model=ComplianceJobResponse)
-def submit_user_partial_decryption(
-    request: SubmitUserPartialDecryptionRequest,
-    current_user: dict = Depends(get_current_user),
-):
-    return service.submit_user_partial_decryption(request, current_user)
-
-
-@router.post("/compliance-jobs/company-partial", response_model=ComplianceJobResponse)
-def submit_company_partial_decryption(
-    request: SubmitCompanyPartialDecryptionRequest,
-    current_user: dict = Depends(get_current_user),
-):
-    return service.submit_company_partial_decryption(request, current_user)
 
 
 @router.post("/compliance-jobs/{job_id}/complete-demo")

@@ -55,6 +55,23 @@ class AddEmployeeRequest(BaseModel):
     user_id: int
 
 
+class SaveLatestLocationRequest(BaseModel):
+    company_id: int
+
+    current_lat_m: float
+    current_lon_m: float
+
+    home_lat_m: float
+    home_lon_m: float
+    home_radius_m: float = 500.0
+
+
+class SaveLatestLocationResponse(BaseModel):
+    message: str
+    company_id: int
+    user_id: int
+
+
 class SaveEncryptedHomeRequest(BaseModel):
     encrypted_home_lat_m: str
     encrypted_home_lon_m: str
@@ -84,39 +101,39 @@ class CompanyUsersStatusResponse(BaseModel):
     users: List[UserLocationStatusItem]
 
 
-class ShareEncryptedLocationRequest(BaseModel):
-    company_id: int
-
-    encrypted_current_lat: str
-    encrypted_current_lon: str
-
-    encrypted_home_lat: str
-    encrypted_home_lon: str
-    encrypted_home_radius: str
-
-
 class ComplianceJobResponse(BaseModel):
     job_id: int
     status: str
 
 
-class SubmitUserPartialDecryptionRequest(BaseModel):
+class RunComplianceCheckResponse(BaseModel):
     job_id: int
-    user_partial_at_home: str
-    user_partial_at_office: str
-    user_partial_in_country: str
-
-
-class SubmitCompanyPartialDecryptionRequest(BaseModel):
-    job_id: int
-    company_partial_at_home: str
-    company_partial_at_office: str
-    company_partial_in_country: str
+    status: str
+    user_id: int
+    username: str | None = None
+    final_at_home: bool | None = None
+    final_at_office: bool | None = None
+    final_in_country: bool | None = None
 
 
 class ComplianceJobStatusResponse(BaseModel):
     job_id: int
     status: str
+
+    encrypted_home_margin: str | None = None
+    encrypted_office_margin: str | None = None
+    encrypted_country_north_margin: str | None = None
+    encrypted_country_south_margin: str | None = None
+    encrypted_country_east_margin: str | None = None
+    encrypted_country_west_margin: str | None = None
+
+    user_partial_home_margin: str | None = None
+    user_partial_office_margin: str | None = None
+    user_partial_country_north_margin: str | None = None
+    user_partial_country_south_margin: str | None = None
+    user_partial_country_east_margin: str | None = None
+    user_partial_country_west_margin: str | None = None
+
     final_at_home: bool | None = None
     final_at_office: bool | None = None
     final_in_country: bool | None = None

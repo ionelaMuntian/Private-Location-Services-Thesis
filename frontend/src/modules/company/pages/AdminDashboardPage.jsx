@@ -1,5 +1,4 @@
-// frontend/src/modules/company/pages/AdminDashboardPage.jsx
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "../../poi-search/styles/poi-search.css";
 
@@ -31,11 +30,15 @@ export default function AdminDashboardPage() {
   const [companyForm, setCompanyForm] = useState(initialCompanyForm);
   const [companies, setCompanies] = useState([]);
   const [selectedCompanyId, setSelectedCompanyId] = useState("");
+
   const [allUsers, setAllUsers] = useState([]);
   const [selectedUserId, setSelectedUserId] = useState("");
+
   const [employees, setEmployees] = useState([]);
+  const [selectedStatusUserId, setSelectedStatusUserId] = useState("");
 
   const [loading, setLoading] = useState(false);
+  const [checkingCompliance, setCheckingCompliance] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -46,6 +49,12 @@ export default function AdminDashboardPage() {
     "Content-Type": "application/json",
     Authorization: `Bearer ${token}`,
   };
+
+  const selectedEmployeeStatus = useMemo(() => {
+    return employees.find(
+      (employee) => String(employee.user_id) === String(selectedStatusUserId)
+    );
+  }, [employees, selectedStatusUserId]);
 
   const handleUnauthorized = () => {
     localStorage.removeItem("access_token");
@@ -59,51 +68,6 @@ export default function AdminDashboardPage() {
       ...prev,
       [field]: value,
     }));
-  };
-
-  const loadCompanies = async () => {
-    const response = await fetch(`${COMPANY_API}/admin/companies`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-
-    if (response.status === 401 || response.status === 403) {
-      handleUnauthorized();
-      return;
-    }
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data?.detail || "Could not load companies.");
-    }
-
-    const loadedCompanies = data.companies || [];
-    setCompanies(loadedCompanies);
-
-    if (loadedCompanies.length > 0 && !selectedCompanyId) {
-      const firstId = String(loadedCompanies[0].id);
-      setSelectedCompanyId(firstId);
-      await loadEmployees(firstId);
-    }
-  };
-
-  const loadAllUsers = async () => {
-    const response = await fetch(`${API_BASE_URL}/auth/users`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-
-    if (response.status === 401 || response.status === 403) {
-      handleUnauthorized();
-      return;
-    }
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data?.detail || "Could not load users.");
-    }
-
-    setAllUsers(data.users || []);
   };
 
   const loadEmployees = async (companyId = selectedCompanyId) => {
@@ -127,7 +91,68 @@ export default function AdminDashboardPage() {
       throw new Error(data?.detail || "Could not load employees.");
     }
 
-    setEmployees(data.users || []);
+    const loadedEmployees = data.users || [];
+    setEmployees(loadedEmployees);
+
+    if (loadedEmployees.length > 0 && !selectedStatusUserId) {
+      setSelectedStatusUserId(String(loadedEmployees[0].user_id));
+    }
+
+    if (loadedEmployees.length === 0) {
+      setSelectedStatusUserId("");
+    }
+  };
+
+  const loadCompanies = async () => {
+    const response = await fetch(`${COMPANY_API}/admin/companies`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (response.status === 401 || response.status === 403) {
+      handleUnauthorized();
+      return;
+    }
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data?.detail || "Could not load companies.");
+    }
+
+    const loadedCompanies = data.companies || [];
+    setCompanies(loadedCompanies);
+
+    if (loadedCompanies.length > 0 && !selectedCompanyId) {
+      const firstCompany = loadedCompanies[0];
+      const firstId = String(firstCompany.id);
+
+      setSelectedCompanyId(firstId);
+      setCompanyForm((prev) => ({
+        ...prev,
+        ...firstCompany,
+      }));
+
+      await loadEmployees(firstId);
+    }
+  };
+
+  const loadAllUsers = async () => {
+    const response = await fetch(`${API_BASE_URL}/auth/users`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (response.status === 401 || response.status === 403) {
+      handleUnauthorized();
+      return;
+    }
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data?.detail || "Could not load users.");
+    }
+
+    setAllUsers(data.users || []);
   };
 
   useEffect(() => {
@@ -214,6 +239,8 @@ export default function AdminDashboardPage() {
       }
 
       setMessage("Employee added.");
+      setSelectedUserId("");
+
       await loadEmployees(selectedCompanyId);
     } catch (err) {
       setError(err.message || "Could not add employee.");
@@ -222,20 +249,72 @@ export default function AdminDashboardPage() {
     }
   };
 
+  const handleRunComplianceCheck = async () => {
+    if (!selectedCompanyId || !selectedStatusUserId) {
+      setError("Select a company and an employee first.");
+      return;
+    }
+
+    setCheckingCompliance(true);
+    setError("");
+    setMessage("");
+
+    try {
+      const response = await fetch(
+        `${COMPANY_API}/companies/${selectedCompanyId}/employees/${selectedStatusUserId}/run-compliance-check`,
+        {
+          method: "POST",
+          headers: authHeaders,
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.detail || "Could not run compliance check.");
+      }
+
+      setMessage(
+        `Compliance check completed. In country: ${formatBool(
+          data.final_in_country
+        )}, at home: ${formatBool(data.final_at_home)}, at office: ${formatBool(
+          data.final_at_office
+        )}.`
+      );
+
+      await loadEmployees(selectedCompanyId);
+    } catch (err) {
+      setError(err.message || "Could not run compliance check.");
+    } finally {
+      setCheckingCompliance(false);
+    }
+  };
+
   const handleCompanyChange = async (value) => {
     setSelectedCompanyId(value);
     setEmployees([]);
+    setSelectedStatusUserId("");
     setError("");
+    setMessage("");
 
     const company = companies.find((item) => String(item.id) === String(value));
+
     if (company) {
       setCompanyForm((prev) => ({
         ...prev,
         ...company,
       }));
-    }
 
-    await loadEmployees(value);
+      await loadEmployees(value);
+    } else {
+      setCompanyForm(initialCompanyForm);
+    }
+  };
+
+  const handleStatusEmployeeChange = (value) => {
+    setSelectedStatusUserId(value);
+    setError("");
+    setMessage("");
   };
 
   const handleLogout = () => {
@@ -287,8 +366,15 @@ export default function AdminDashboardPage() {
               </div>
             </header>
 
-            <div className="poi-content-grid">
-              <section className="poi-card poi-form-card">
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "24px",
+                width: "100%",
+              }}
+            >
+              <section className="poi-card">
                 <div className="poi-card-header">
                   <h3>Company Policy</h3>
                   <p>Declare office coordinates and country bounding coordinates.</p>
@@ -422,20 +508,20 @@ export default function AdminDashboardPage() {
                     </button>
                   </div>
                 </form>
-
-                {message && <div className="poi-alert">{message}</div>}
-                {error && <div className="poi-alert poi-alert-error">{error}</div>}
               </section>
 
-              <section className="poi-card poi-results-card">
+              <section className="poi-card">
                 <div className="poi-card-header">
-                  <h3>Employees</h3>
-                  <p>Add normal users as employees and view their compliance status.</p>
+                  <h3>Add Employees</h3>
+                  <p>
+                    Select a registered user and assign the user to the selected
+                    company.
+                  </p>
                 </div>
 
                 <div className="poi-form">
                   <label className="full-width">
-                    Add Employee
+                    Employee
                     <select
                       value={selectedUserId}
                       onChange={(e) => setSelectedUserId(e.target.value)}
@@ -456,42 +542,135 @@ export default function AdminDashboardPage() {
                       disabled={loading || !selectedCompanyId || !selectedUserId}
                       onClick={handleAddEmployee}
                     >
-                      Add Employee
+                      {loading ? "Adding..." : "Add Employee"}
                     </button>
                   </div>
+                </div>
+              </section>
+
+              <section className="poi-card">
+                <div className="poi-card-header">
+                  <h3>Employee Compliance Status</h3>
+                  <p>
+                    Select an employee, then run the encrypted compliance check.
+                    The company receives only the final boolean status.
+                  </p>
                 </div>
 
                 {employees.length === 0 ? (
                   <p className="poi-empty">No employees added yet.</p>
                 ) : (
-                  <div className="poi-table-wrap">
-                    <table className="poi-table">
-                      <thead>
-                        <tr>
-                          <th>Employee</th>
-                          <th>Email</th>
-                          <th>In Country</th>
-                          <th>At Home</th>
-                          <th>At Office</th>
-                          <th>Last Updated</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {employees.map((employee) => (
-                          <tr key={employee.user_id}>
-                            <td>{employee.username}</td>
-                            <td>{employee.email}</td>
-                            <td>{formatBool(employee.in_country)}</td>
-                            <td>{formatBool(employee.at_home)}</td>
-                            <td>{formatBool(employee.at_office)}</td>
-                            <td>{employee.last_updated || "—"}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                  <>
+                    <div className="poi-form">
+                      <label className="full-width">
+                        Employee
+                        <select
+                          value={selectedStatusUserId}
+                          onChange={(e) =>
+                            handleStatusEmployeeChange(e.target.value)
+                          }
+                        >
+                          <option value="">Select employee</option>
+                          {employees.map((employee) => (
+                            <option
+                              key={employee.user_id}
+                              value={employee.user_id}
+                            >
+                              {employee.username} — {employee.email}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+
+                    {!selectedEmployeeStatus ? (
+                      <p className="poi-empty">
+                        Select an employee to view the status.
+                      </p>
+                    ) : (
+                      <>
+                        <div className="poi-table-wrap">
+                          <table className="poi-table">
+                            <tbody>
+                              <tr>
+                                <th>Employee</th>
+                                <td>{selectedEmployeeStatus.username}</td>
+                              </tr>
+
+                              <tr>
+                                <th>Email</th>
+                                <td>{selectedEmployeeStatus.email}</td>
+                              </tr>
+
+                              <tr>
+                                <th>In Country</th>
+                                <td>
+                                  {formatBool(selectedEmployeeStatus.in_country)}
+                                </td>
+                              </tr>
+
+                              <tr>
+                                <th>At Home</th>
+                                <td>
+                                  {formatBool(selectedEmployeeStatus.at_home)}
+                                </td>
+                              </tr>
+
+                              <tr>
+                                <th>At Office</th>
+                                <td>
+                                  {formatBool(selectedEmployeeStatus.at_office)}
+                                </td>
+                              </tr>
+
+                              <tr>
+                                <th>Last Updated</th>
+                                <td>
+                                  {selectedEmployeeStatus.last_updated || "—"}
+                                </td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+
+                        <div className="full-width poi-form-actions">
+                          <button
+                            className="primary-btn"
+                            type="button"
+                            disabled={
+                              checkingCompliance ||
+                              loading ||
+                              !selectedCompanyId ||
+                              !selectedStatusUserId
+                            }
+                            onClick={handleRunComplianceCheck}
+                          >
+                            {checkingCompliance
+                              ? "Running Check..."
+                              : "Run Compliance Check"}
+                          </button>
+
+                          <button
+                            className="primary-btn"
+                            type="button"
+                            disabled={!selectedCompanyId || loading}
+                            onClick={() => loadEmployees(selectedCompanyId)}
+                          >
+                            Refresh Status
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </>
                 )}
               </section>
+
+              {(message || error) && (
+                <section className="poi-card">
+                  {message && <div className="poi-alert">{message}</div>}
+                  {error && <div className="poi-alert poi-alert-error">{error}</div>}
+                </section>
+              )}
             </div>
           </div>
         </main>

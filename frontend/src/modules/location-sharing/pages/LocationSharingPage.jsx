@@ -4,8 +4,8 @@ import axios from "axios";
 import "../styles/location-sharing.css";
 
 const API_BASE_URL = "http://127.0.0.1:8000";
-const HOME_LOCATION_URL = `${API_BASE_URL}/client/company/home-location`;
 const MY_COMPANIES_URL = `${API_BASE_URL}/client/company/my-companies`;
+const LATEST_LOCATION_URL = `${API_BASE_URL}/client/company/latest-location`;
 
 const initialForm = {
   homeLatitude: 5741200,
@@ -82,22 +82,6 @@ export default function LocationSharingPage() {
     }));
   };
 
-  const persistHomeAddress = async (token) => {
-    await axios.post(
-      HOME_LOCATION_URL,
-      {
-        encrypted_home_lat_m: String(form.homeLatitude),
-        encrypted_home_lon_m: String(form.homeLongitude),
-        home_radius_m: Number(form.homeRadius),
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      }
-    );
-  };
-
   const handleSubmit = async (event) => {
     event.preventDefault();
 
@@ -117,7 +101,22 @@ export default function LocationSharingPage() {
     setSuccessMessage("");
 
     try {
-      await persistHomeAddress(token);
+      await axios.post(
+        LATEST_LOCATION_URL,
+        {
+          company_id: Number(company.id),
+          current_lat_m: Number(form.currentLatitude),
+          current_lon_m: Number(form.currentLongitude),
+          home_lat_m: Number(form.homeLatitude),
+          home_lon_m: Number(form.homeLongitude),
+          home_radius_m: Number(form.homeRadius),
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
 
       const preparedData = {
         companyName: company.name,
@@ -130,7 +129,7 @@ export default function LocationSharingPage() {
 
       setSavedData(preparedData);
       setSuccessMessage(
-        "Home address was saved and the current location was updated successfully."
+        "Location data was saved locally. The company can now request a compliance check."
       );
     } catch (err) {
       console.error(err);
@@ -144,7 +143,7 @@ export default function LocationSharingPage() {
         err?.response?.data?.detail?.detail ||
         err?.response?.data?.detail ||
         err?.message ||
-        "Could not update the location data.";
+        "Could not save the location data.";
 
       setError(
         typeof backendMessage === "string"
@@ -288,7 +287,7 @@ export default function LocationSharingPage() {
                     type="submit"
                     disabled={loading || !company}
                   >
-                    {loading ? "Updating..." : "Share / Update Location"}
+                    {loading ? "Saving..." : "Share / Update Location"}
                   </button>
                 </div>
 
@@ -308,7 +307,7 @@ export default function LocationSharingPage() {
               <section className="location-summary">
                 <h2 className="location-section-title">Current State</h2>
                 <p className="location-section-subtitle">
-                  Latest values prepared for encrypted processing.
+                  Latest values saved in the trusted client backend.
                 </p>
 
                 {!savedData ? (
@@ -345,6 +344,11 @@ export default function LocationSharingPage() {
                     <div className="location-summary-row">
                       <span>Current Longitude</span>
                       <strong>{savedData.currentLongitude}</strong>
+                    </div>
+
+                    <div className="location-summary-row">
+                      <span>Verification</span>
+                      <strong>Waiting for company request</strong>
                     </div>
                   </div>
                 )}
