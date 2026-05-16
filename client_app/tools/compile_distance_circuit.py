@@ -5,14 +5,12 @@ from pathlib import Path
 import numpy as np
 from concrete import fhe
 
-
 CLIENT_APP_DIR = Path(__file__).resolve().parents[1]
 ARTIFACTS_DIR = CLIENT_APP_DIR / ".artifacts" / "concrete"
 ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
 
 SERVER_PATH = ARTIFACTS_DIR / "server.zip"
 CLIENT_SPECS_PATH = ARTIFACTS_DIR / "client_specs.bin"
-
 
 def sorted_top2_by_distance(
     qx_rel: np.int64,

@@ -11,6 +11,7 @@ from .schemas import (
     CreateCompanyRequest,
     JoinCompanyRequest,
     MyCompaniesResponse,
+    MyLocationStatusResponse,
     RunComplianceCheckResponse,
     SaveEncryptedHomeRequest,
     SaveLatestLocationRequest,
@@ -30,6 +31,23 @@ def create_company(
     current_user: dict = Depends(get_current_user),
 ):
     return service.create_company(request, current_user)
+
+
+@router.put("/companies/{company_id}", response_model=CompanyResponse)
+def update_company(
+    company_id: int,
+    request: CreateCompanyRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    return service.update_company(company_id, request, current_user)
+
+
+@router.delete("/companies/{company_id}")
+def delete_company(
+    company_id: int,
+    current_user: dict = Depends(get_current_user),
+):
+    return service.delete_company(company_id, current_user)
 
 
 @router.get("/admin/companies", response_model=AdminCompaniesResponse)
@@ -84,6 +102,14 @@ def submit_location_status(
     current_user: dict = Depends(get_current_user),
 ):
     return service.submit_status(request, current_user)
+
+
+@router.get("/companies/{company_id}/my-status", response_model=MyLocationStatusResponse)
+def get_my_location_status(
+    company_id: int,
+    current_user: dict = Depends(get_current_user),
+):
+    return service.get_my_location_status(company_id, current_user)
 
 
 @router.get("/companies/{company_id}/users-status", response_model=CompanyUsersStatusResponse)

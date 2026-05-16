@@ -92,6 +92,9 @@ class UserLocationStatusItem(BaseModel):
     in_country: bool | None = None
     at_home: bool | None = None
     at_office: bool | None = None
+    plaintext_in_country: bool | None = None
+    plaintext_at_home: bool | None = None
+    plaintext_at_office: bool | None = None
     last_updated: str | None = None
 
 
@@ -114,6 +117,18 @@ class RunComplianceCheckResponse(BaseModel):
     final_at_home: bool | None = None
     final_at_office: bool | None = None
     final_in_country: bool | None = None
+    plaintext_at_home: bool | None = None
+    plaintext_at_office: bool | None = None
+    plaintext_in_country: bool | None = None
+
+
+class MyLocationStatusResponse(BaseModel):
+    company_id: int
+    in_country: bool | None = None
+    at_home: bool | None = None
+    at_office: bool | None = None
+    last_updated: str | None = None
+    pending: bool = False
 
 
 class ComplianceJobStatusResponse(BaseModel):

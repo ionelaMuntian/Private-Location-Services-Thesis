@@ -1,6 +1,7 @@
 # service_provider_app/app/grpc_server.py
 import asyncio
 import json
+import traceback
 from urllib.parse import parse_qs, urlparse
 
 import grpc
@@ -112,6 +113,8 @@ class ServiceProviderGatewayServicer(
             )
 
         except Exception as exc:
+            print(f"[gRPC handler error] {type(exc).__name__}: {exc}", flush=True)
+            traceback.print_exc()
             return _json_response(
                 500,
                 {

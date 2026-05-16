@@ -16,7 +16,15 @@ from .schemas import (
 
 repository = CompanyRepository()
 
+# Tolerance for CKKS approximation noise when interpreting the sign of a margin.
+# After COORD_SCALE=100 normalization, smallest radius² is (100m/100)² = 1.0,
+# so 1e-3 is well below any meaningful margin value.
 EPSILON = 1e-3
+# CKKS approximation error grows with value magnitude. Dividing by COORD_SCALE
+# keeps numbers small enough (~10^3 instead of ~10^6) so that after squaring
+# (~10^6 instead of ~10^12) the noise stays well below any reasonable radius².
+# All comparisons are scale-invariant (dividing both sides preserves the sign).
+COORD_SCALE = 100.0
 
 
 def _leq_zero(value: float) -> bool:
@@ -27,6 +35,43 @@ def _geq_zero(value: float) -> bool:
     return value >= -EPSILON
 
 
+def _compute_plaintext_compliance(location_input: dict, company: dict) -> dict:
+    current_lat = float(location_input["current_lat_m"])
+    current_lon = float(location_input["current_lon_m"])
+    home_lat    = float(location_input["home_lat_m"])
+    home_lon    = float(location_input["home_lon_m"])
+    home_radius = float(location_input["home_radius_m"])
+
+    office_lat    = float(company["office_lat_m"])
+    office_lon    = float(company["office_lon_m"])
+    office_radius = float(company["office_radius_m"])
+
+    home_dist_sq   = (current_lat - home_lat) ** 2 + (current_lon - home_lon) ** 2
+    office_dist_sq = (current_lat - office_lat) ** 2 + (current_lon - office_lon) ** 2
+
+    plaintext_at_home   = home_dist_sq   <= home_radius ** 2
+    plaintext_at_office = office_dist_sq <= office_radius ** 2
+
+    north = company.get("country_north_m")
+    south = company.get("country_south_m")
+    east  = company.get("country_east_m")
+    west  = company.get("country_west_m")
+
+    if all(v is not None for v in [north, south, east, west]):
+        plaintext_in_country = (
+            south <= current_lat <= north
+            and west <= current_lon <= east
+        )
+    else:
+        plaintext_in_country = None
+
+    return {
+        "plaintext_at_home": plaintext_at_home,
+        "plaintext_at_office": plaintext_at_office,
+        "plaintext_in_country": plaintext_in_country,
+    }
+
+
 class CompanyService:
     def initialize_storage(self) -> None:
         repository.initialize()
@@ -35,32 +80,87 @@ class CompanyService:
         data = request.model_dump()
 
         data["encrypted_office_lat_m"] = openfhe_multiparty_runtime.encrypt_scalar(
-            request.office_lat_m
+            request.office_lat_m / COORD_SCALE
         )
         data["encrypted_office_lon_m"] = openfhe_multiparty_runtime.encrypt_scalar(
-            request.office_lon_m
+            request.office_lon_m / COORD_SCALE
         )
         data["encrypted_office_radius_m"] = openfhe_multiparty_runtime.encrypt_scalar(
-            request.office_radius_m
+            request.office_radius_m / COORD_SCALE
         )
 
         data["encrypted_country_north_m"] = openfhe_multiparty_runtime.encrypt_scalar(
-            request.country_north_m or 0.0
+            (request.country_north_m or 0.0) / COORD_SCALE
         )
         data["encrypted_country_south_m"] = openfhe_multiparty_runtime.encrypt_scalar(
-            request.country_south_m or 0.0
+            (request.country_south_m or 0.0) / COORD_SCALE
         )
         data["encrypted_country_east_m"] = openfhe_multiparty_runtime.encrypt_scalar(
-            request.country_east_m or 0.0
+            (request.country_east_m or 0.0) / COORD_SCALE
         )
         data["encrypted_country_west_m"] = openfhe_multiparty_runtime.encrypt_scalar(
-            request.country_west_m or 0.0
+            (request.country_west_m or 0.0) / COORD_SCALE
         )
 
         return repository.create_company(
             data=data,
             admin_user_id=current_user["id"],
         )
+
+    def update_company(self, company_id: int, request: CreateCompanyRequest, current_user: dict) -> dict:
+        if not repository.is_company_admin(company_id, current_user["id"]):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only company administrators can update this company.",
+            )
+
+        data = request.model_dump()
+
+        data["encrypted_office_lat_m"] = openfhe_multiparty_runtime.encrypt_scalar(
+            request.office_lat_m / COORD_SCALE
+        )
+        data["encrypted_office_lon_m"] = openfhe_multiparty_runtime.encrypt_scalar(
+            request.office_lon_m / COORD_SCALE
+        )
+        data["encrypted_office_radius_m"] = openfhe_multiparty_runtime.encrypt_scalar(
+            request.office_radius_m / COORD_SCALE
+        )
+        data["encrypted_country_north_m"] = openfhe_multiparty_runtime.encrypt_scalar(
+            (request.country_north_m or 0.0) / COORD_SCALE
+        )
+        data["encrypted_country_south_m"] = openfhe_multiparty_runtime.encrypt_scalar(
+            (request.country_south_m or 0.0) / COORD_SCALE
+        )
+        data["encrypted_country_east_m"] = openfhe_multiparty_runtime.encrypt_scalar(
+            (request.country_east_m or 0.0) / COORD_SCALE
+        )
+        data["encrypted_country_west_m"] = openfhe_multiparty_runtime.encrypt_scalar(
+            (request.country_west_m or 0.0) / COORD_SCALE
+        )
+
+        result = repository.update_company(
+            company_id=company_id,
+            data=data,
+            admin_user_id=current_user["id"],
+        )
+
+        if result is None:
+            raise HTTPException(status_code=404, detail="Company not found.")
+
+        return result
+
+    def delete_company(self, company_id: int, current_user: dict) -> dict:
+        if not repository.is_company_admin(company_id, current_user["id"]):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only company administrators can delete this company.",
+            )
+
+        deleted = repository.delete_company(company_id, current_user["id"])
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Company not found.")
+
+        return {"message": "Company deleted successfully.", "company_id": company_id}
 
     def get_my_admin_companies(self, current_user: dict) -> dict:
         companies = repository.get_admin_companies(current_user["id"])
@@ -128,6 +228,13 @@ class CompanyService:
         repository.save_latest_location_input(
             user_id=current_user["id"],
             data=request.model_dump(),
+        )
+
+        # Reset status to pending so the employee's polling no longer shows
+        # a stale result from the previous compliance check.
+        repository.clear_location_status(
+            user_id=current_user["id"],
+            company_id=request.company_id,
         )
 
         return {
@@ -220,19 +327,41 @@ class CompanyService:
             )
 
         encrypted_current_lat = openfhe_multiparty_runtime.encrypt_scalar(
-            location_input["current_lat_m"]
+            location_input["current_lat_m"] / COORD_SCALE
         )
         encrypted_current_lon = openfhe_multiparty_runtime.encrypt_scalar(
-            location_input["current_lon_m"]
+            location_input["current_lon_m"] / COORD_SCALE
         )
         encrypted_home_lat = openfhe_multiparty_runtime.encrypt_scalar(
-            location_input["home_lat_m"]
+            location_input["home_lat_m"] / COORD_SCALE
         )
         encrypted_home_lon = openfhe_multiparty_runtime.encrypt_scalar(
-            location_input["home_lon_m"]
+            location_input["home_lon_m"] / COORD_SCALE
         )
         encrypted_home_radius = openfhe_multiparty_runtime.encrypt_scalar(
-            location_input["home_radius_m"]
+            location_input["home_radius_m"] / COORD_SCALE
+        )
+
+        encrypted_office_lat = openfhe_multiparty_runtime.encrypt_scalar(
+            company["office_lat_m"] / COORD_SCALE
+        )
+        encrypted_office_lon = openfhe_multiparty_runtime.encrypt_scalar(
+            company["office_lon_m"] / COORD_SCALE
+        )
+        encrypted_office_radius = openfhe_multiparty_runtime.encrypt_scalar(
+            company["office_radius_m"] / COORD_SCALE
+        )
+        encrypted_country_north = openfhe_multiparty_runtime.encrypt_scalar(
+            (company["country_north_m"] or 0.0) / COORD_SCALE
+        )
+        encrypted_country_south = openfhe_multiparty_runtime.encrypt_scalar(
+            (company["country_south_m"] or 0.0) / COORD_SCALE
+        )
+        encrypted_country_east = openfhe_multiparty_runtime.encrypt_scalar(
+            (company["country_east_m"] or 0.0) / COORD_SCALE
+        )
+        encrypted_country_west = openfhe_multiparty_runtime.encrypt_scalar(
+            (company["country_west_m"] or 0.0) / COORD_SCALE
         )
 
         service_payload = {
@@ -245,13 +374,13 @@ class CompanyService:
             "encrypted_home_lat": encrypted_home_lat,
             "encrypted_home_lon": encrypted_home_lon,
             "encrypted_home_radius": encrypted_home_radius,
-            "encrypted_office_lat": company["encrypted_office_lat_m"],
-            "encrypted_office_lon": company["encrypted_office_lon_m"],
-            "encrypted_office_radius": company["encrypted_office_radius_m"],
-            "encrypted_country_north": company["encrypted_country_north_m"],
-            "encrypted_country_south": company["encrypted_country_south_m"],
-            "encrypted_country_east": company["encrypted_country_east_m"],
-            "encrypted_country_west": company["encrypted_country_west_m"],
+            "encrypted_office_lat": encrypted_office_lat,
+            "encrypted_office_lon": encrypted_office_lon,
+            "encrypted_office_radius": encrypted_office_radius,
+            "encrypted_country_north": encrypted_country_north,
+            "encrypted_country_south": encrypted_country_south,
+            "encrypted_country_east": encrypted_country_east,
+            "encrypted_country_west": encrypted_country_west,
         }
 
         encrypted_margins = await post_to_service_provider(
@@ -355,6 +484,8 @@ class CompanyService:
             and _geq_zero(west_margin)
         )
 
+        plaintext = _compute_plaintext_compliance(location_input, company)
+
         result = repository.store_company_fusion_result(
             job_id=job_id,
             company_partials={
@@ -376,6 +507,9 @@ class CompanyService:
             final_at_home=final_at_home,
             final_at_office=final_at_office,
             final_in_country=final_in_country,
+            plaintext_at_home=plaintext["plaintext_at_home"],
+            plaintext_at_office=plaintext["plaintext_at_office"],
+            plaintext_in_country=plaintext["plaintext_in_country"],
         )
 
         repository.submit_status(
@@ -385,6 +519,9 @@ class CompanyService:
                 "at_home": final_at_home,
                 "at_office": final_at_office,
                 "in_country": final_in_country,
+                "plaintext_at_home": plaintext["plaintext_at_home"],
+                "plaintext_at_office": plaintext["plaintext_at_office"],
+                "plaintext_in_country": plaintext["plaintext_in_country"],
             },
         )
 
@@ -398,6 +535,44 @@ class CompanyService:
             "final_at_home": result["final_at_home"],
             "final_at_office": result["final_at_office"],
             "final_in_country": result["final_in_country"],
+            "plaintext_at_home": result["plaintext_at_home"],
+            "plaintext_at_office": result["plaintext_at_office"],
+            "plaintext_in_country": result["plaintext_in_country"],
+        }
+
+    def get_my_location_status(self, company_id: int, current_user: dict) -> dict:
+        company = repository.get_company(company_id)
+        if company is None:
+            raise HTTPException(status_code=404, detail="Company not found.")
+
+        if not repository.is_employee_of_company(company_id, current_user["id"]):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Current user is not assigned to this company.",
+            )
+
+        status_row = repository.get_user_location_status(
+            user_id=current_user["id"],
+            company_id=company_id,
+        )
+
+        if status_row is None:
+            return {
+                "company_id": company_id,
+                "in_country": None,
+                "at_home": None,
+                "at_office": None,
+                "last_updated": None,
+                "pending": True,
+            }
+
+        return {
+            "company_id": company_id,
+            "in_country": status_row["in_country"],
+            "at_home": status_row["at_home"],
+            "at_office": status_row["at_office"],
+            "last_updated": status_row["last_updated"],
+            "pending": False,
         }
 
     def get_compliance_job_status(self, job_id: int, current_user: dict) -> dict:

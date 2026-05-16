@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import "../styles/location-sharing.css";
@@ -6,13 +6,20 @@ import "../styles/location-sharing.css";
 const API_BASE_URL = "http://127.0.0.1:8000";
 const MY_COMPANIES_URL = `${API_BASE_URL}/client/company/my-companies`;
 const LATEST_LOCATION_URL = `${API_BASE_URL}/client/company/latest-location`;
+const MY_STATUS_URL = (companyId) =>
+  `${API_BASE_URL}/client/company/companies/${companyId}/my-status`;
+
+const POLL_INTERVAL_MS = 5000;
+const MAX_POLL_ATTEMPTS = 60;
 
 const initialForm = {
-  homeLatitude: 5741200,
-  homeLongitude: 2362100,
+  // Home — somewhere near Cluj-Napoca center (Web Mercator, meters)
+  homeLatitude: 5900000,
+  homeLongitude: 2625000,
   homeRadius: 500,
-  currentLatitude: 5741384.185332346,
-  currentLongitude: 2362254.8313645967,
+  // Current location — at UTCN office (Web Mercator, meters)
+  currentLatitude: 5901100,
+  currentLongitude: 2626008,
 };
 
 export default function LocationSharingPage() {
@@ -25,6 +32,72 @@ export default function LocationSharingPage() {
   const [companyLoading, setCompanyLoading] = useState(false);
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
+  const [verificationStatus, setVerificationStatus] = useState(null);
+  const [polling, setPolling] = useState(false);
+  const pollAttemptsRef = useRef(0);
+  const pollTimerRef = useRef(null);
+
+  const stopPolling = useCallback(() => {
+    if (pollTimerRef.current) {
+      clearTimeout(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+    setPolling(false);
+    pollAttemptsRef.current = 0;
+  }, []);
+
+  const pollStatus = useCallback(
+    async (companyId, token) => {
+      if (pollAttemptsRef.current >= MAX_POLL_ATTEMPTS) {
+        stopPolling();
+        return;
+      }
+
+      pollAttemptsRef.current += 1;
+
+      try {
+        const response = await axios.get(MY_STATUS_URL(companyId), {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        const data = response.data;
+
+        if (!data.pending) {
+          setVerificationStatus(data);
+          stopPolling();
+          return;
+        }
+      } catch {
+        // keep polling on transient errors
+      }
+
+      pollTimerRef.current = setTimeout(
+        () => pollStatus(companyId, token),
+        POLL_INTERVAL_MS
+      );
+    },
+    [stopPolling]
+  );
+
+  const startPolling = useCallback(
+    (companyId) => {
+      stopPolling();
+      const token = localStorage.getItem("access_token");
+      if (!token) return;
+      setPolling(true);
+      setVerificationStatus(null);
+      pollAttemptsRef.current = 0;
+      pollTimerRef.current = setTimeout(
+        () => pollStatus(companyId, token),
+        POLL_INTERVAL_MS
+      );
+    },
+    [pollStatus, stopPolling]
+  );
+
+  useEffect(() => {
+    return () => stopPolling();
+  }, [stopPolling]);
 
   useEffect(() => {
     const token = localStorage.getItem("access_token");
@@ -129,8 +202,9 @@ export default function LocationSharingPage() {
 
       setSavedData(preparedData);
       setSuccessMessage(
-        "Location data was saved locally. The company can now request a compliance check."
+        "Location data was saved. The company can now run a compliance check. Polling for your result..."
       );
+      startPolling(company.id);
     } catch (err) {
       console.error(err);
 
@@ -289,6 +363,13 @@ export default function LocationSharingPage() {
                   >
                     {loading ? "Saving..." : "Share / Update Location"}
                   </button>
+
+                  {!company && !companyLoading && (
+                    <p className="location-no-company-hint">
+                      You must be assigned to a company before sharing your
+                      location. Ask your company admin to add you.
+                    </p>
+                  )}
                 </div>
 
                 {error && (
@@ -348,8 +429,53 @@ export default function LocationSharingPage() {
 
                     <div className="location-summary-row">
                       <span>Verification</span>
-                      <strong>Waiting for company request</strong>
+                      <strong>
+                        {polling
+                          ? "Polling for result..."
+                          : verificationStatus
+                          ? "Result received"
+                          : "Waiting for company check"}
+                      </strong>
                     </div>
+                  </div>
+                )}
+
+                {verificationStatus && !verificationStatus.pending && (
+                  <div className="location-verification-result">
+                    <h3 className="location-section-title">
+                      Verification Result
+                    </h3>
+                    <p className="location-section-subtitle">
+                      Computed on encrypted data by the service provider.
+                      Decrypted by both parties.
+                    </p>
+
+                    <div className="location-result-badges">
+                      <span
+                        className={`location-badge ${verificationStatus.in_country ? "location-badge-ok" : "location-badge-fail"}`}
+                      >
+                        {verificationStatus.in_country ? "✓" : "✗"} In Country
+                      </span>
+
+                      <span
+                        className={`location-badge ${verificationStatus.at_office ? "location-badge-ok" : "location-badge-fail"}`}
+                      >
+                        {verificationStatus.at_office ? "✓" : "✗"} At Office
+                      </span>
+
+                      <span
+                        className={`location-badge ${verificationStatus.at_home ? "location-badge-ok" : "location-badge-fail"}`}
+                      >
+                        {verificationStatus.at_home ? "✓" : "✗"} At Home
+                      </span>
+                    </div>
+
+                    {verificationStatus.last_updated && (
+                      <p className="location-result-timestamp">
+                        Last checked:{" "}
+                        {new Date(verificationStatus.last_updated).toLocaleString()}
+                      </p>
+                    )}
                   </div>
                 )}
               </section>

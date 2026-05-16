@@ -61,17 +61,17 @@ def load_eval_mult_keys(cc, eval_mult_keys_b64: str) -> None:
     path = _write_b64_to_temp_file(eval_mult_keys_b64)
 
     try:
-        # OpenFHE keeps EvalMultKeys in an internal cache.
-        # If the same keyTag is loaded twice, it throws:
-        # "Can not save a EvalMultKeys vector as there is a key vector for the given keyTag".
-        # Clearing before loading avoids duplicate-key insertion between requests.
         try:
-            cc.ClearEvalMultKeys()
-        except Exception:
-            pass
-
-        if not cc.DeserializeEvalMultKey(path, BINARY):
-            raise RuntimeError("OpenFHE failed to deserialize EvalMult keys.")
+            if not cc.DeserializeEvalMultKey(path, BINARY):
+                raise RuntimeError("OpenFHE failed to deserialize EvalMult keys.")
+        except RuntimeError as exc:
+            # The Python binding's cc.ClearEvalMultKeys() only clears keys for
+            # cc's own (empty) keyTag, not the joint-public-key tag already in
+            # the global store from a previous request.  When the same client
+            # sends the same persisted keys on every call, the global store
+            # already contains the correct keys — safe to reuse them.
+            if "there is a key vector for the given keyTag" not in str(exc):
+                raise
     finally:
         Path(path).unlink(missing_ok=True)
 
