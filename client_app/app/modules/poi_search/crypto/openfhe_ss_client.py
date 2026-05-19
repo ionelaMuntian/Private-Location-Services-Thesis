@@ -8,18 +8,9 @@ class OpenFHESSClientAdapter(ClientCryptoAdapter):
     """
     Client adapter for CKKS + FHEW scheme-switching nearest-POI search.
 
-    prepare_query() uploads:
-      - CKKS crypto context (includes BinFHE context + BTKeys)
-      - public key
-      - eval-mult keys
-      - encrypted query coordinates (broadcast ciphertexts)
-
-    parse_response() expects:
-      - dist2_ct_b64: str    — encrypted squared-distance ciphertext from server
-      - candidates: list[dict] — POI metadata with lat_m/lon_m for distance computation
-
-    The client runs EvalMinSchemeSwitching locally on the received dist² ciphertext
-    to find the argmin without decrypting all distances.
+    Uses a single fixed-N runtime (N_SS=128) for all categories.  The server
+    pads smaller categories to 128 slots with large dummy distances; the client
+    restricts the winner search to the first len(candidates) real slots.
     """
 
     def prepare_query(self, latitude: float, longitude: float, k: int) -> dict:
@@ -33,7 +24,6 @@ class OpenFHESSClientAdapter(ClientCryptoAdapter):
                     "crypto_context_b64": rt.serialize_crypto_context(),
                     "public_key_b64": rt.serialize_public_key(),
                     "eval_mult_keys_b64": rt.serialize_eval_mult_keys(),
-                    "eval_automorphism_keys_b64": rt.serialize_eval_automorphism_keys(),
                     "encrypted_qy": rt.encrypt_broadcast(float(latitude)),
                     "encrypted_qx": rt.encrypt_broadcast(float(longitude)),
                     "n_candidates": rt.n,
@@ -47,7 +37,6 @@ class OpenFHESSClientAdapter(ClientCryptoAdapter):
                 "latitude_m": latitude,
                 "longitude_m": longitude,
                 "requested_k": k,
-                "n_candidates": rt.n,
             },
         }
 
@@ -58,27 +47,21 @@ class OpenFHESSClientAdapter(ClientCryptoAdapter):
         rt = get_openfhe_ss_runtime()
         dist2_ct_b64: str = response_data["dist2_ct_b64"]
         candidates: list[dict] = response_data["candidates"]
+        actual_n = len(candidates)
 
-        winner_idx = rt.decrypt_argmin_via_ss(dist2_ct_b64)
+        winner_idx = rt.decrypt_argmin_via_ss(dist2_ct_b64, actual_n)
 
-        if winner_idx >= len(candidates):
+        if winner_idx >= actual_n:
             raise ValueError(
-                f"OpenFHE SS: winner index {winner_idx} out of range "
-                f"({len(candidates)} candidates)."
+                f"OpenFHE SS: winner index {winner_idx} out of range ({actual_n} candidates)."
             )
 
         winner = candidates[winner_idx]
 
-        # Compute distance from user coordinates to winner (metric projection)
         user_lat_m = local_state["latitude_m"]
         user_lon_m = local_state["longitude_m"]
-
-        # Candidates include lat_m/lon_m (projected metres) for distance computation
-        winner_lat_m = float(winner.get("lat_m", 0.0))
-        winner_lon_m = float(winner.get("lon_m", 0.0))
-
-        dy = winner_lat_m - user_lat_m
-        dx = winner_lon_m - user_lon_m
+        dy = float(winner.get("lat_m", 0.0)) - user_lat_m
+        dx = float(winner.get("lon_m", 0.0)) - user_lon_m
         dist_km = round(math.sqrt(dy * dy + dx * dx) / 1000.0, 4)
 
         return [

@@ -10,9 +10,9 @@ import "../styles/statistics.css";
 const BENCHMARK_URL = "http://127.0.0.1:8000/client/poi/benchmark";
 const BENCHMARK_TIMEOUT_MS = 7200000; // 2 hours — Concrete N=20 can be very slow
 
-const CATEGORIES = ["clinic", "pharmacy", "university", "bank", "hotel", "restaurant"];
+const CATEGORIES = ["hospital", "school", "university", "hotel", "clinic", "bank"];
 const CONCRETE_N_OPTIONS = [1, 2, 5, 10, 20];
-const SCHEME_OPTIONS = ["plaintext", "ckks", "bfv", "openfhe"];
+const SCHEME_OPTIONS = ["plaintext", "ckks", "openfhe_ss"];
 
 const DEFAULT_LAT = 5902000.0;
 const DEFAULT_LON = 2622000.0;
@@ -54,7 +54,7 @@ export default function StatisticsPage() {
   const [category, setCategory] = useState("clinic");
   const [lat, setLat] = useState(DEFAULT_LAT);
   const [lon, setLon] = useState(DEFAULT_LON);
-  const [selectedSchemes, setSelectedSchemes] = useState(["plaintext", "ckks", "bfv", "openfhe"]);
+  const [selectedSchemes, setSelectedSchemes] = useState(["plaintext", "ckks", "openfhe_ss"]);
   const [selectedN, setSelectedN] = useState([1, 2, 5, 10]);
 
   const [loading, setLoading] = useState(false);

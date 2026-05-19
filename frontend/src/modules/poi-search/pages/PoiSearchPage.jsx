@@ -11,7 +11,7 @@ const REQUEST_TIMEOUT_MS = 1800000;
 
 const initialForm = {
   searchType: "category",
-  category: "clinic",
+  category: "hospital",
   nameQuery: "",
   k: 2,
   latitude_m: 5902000.0,
@@ -379,12 +379,12 @@ export default function PoiSearchPage() {
                         value={form.category}
                         onChange={(e) => handleChange("category", e.target.value)}
                       >
-                        <option value="clinic">clinic</option>
-                        <option value="pharmacy">pharmacy</option>
+                        <option value="hospital">hospital</option>
+                        <option value="school">school</option>
                         <option value="university">university</option>
-                        <option value="bank">bank</option>
                         <option value="hotel">hotel</option>
-                        <option value="restaurant">restaurant</option>
+                        <option value="clinic">clinic</option>
+                        <option value="bank">bank</option>
                       </select>
                     </label>
                   ) : (
@@ -446,9 +446,7 @@ export default function PoiSearchPage() {
                         >
                           <option value="plaintext">plaintext</option>
                           <option value="ckks">ckks</option>
-                          <option value="bfv">bfv</option>
                           <option value="concrete">concrete</option>
-                          <option value="openfhe">openfhe</option>
                           <option value="openfhe_ss">openfhe_ss (scheme switching)</option>
                           <option value="all">all</option>
                         </select>
@@ -461,24 +459,11 @@ export default function PoiSearchPage() {
                         </div>
                       )}
 
-                      {form.scheme === "bfv" && (
-                        <div className="full-width poi-alert">
-                          BFV uses exact integer arithmetic with scaled coordinates.
-                        </div>
-                      )}
-
                       {form.scheme === "concrete" && (
                         <div className="full-width poi-alert">
                           Concrete uses TFHE — slower than CKKS/BFV but supports
                           exact integer arithmetic. Each query may take several
                           minutes; please be patient.
-                        </div>
-                      )}
-
-                      {form.scheme === "openfhe" && (
-                        <div className="full-width poi-alert">
-                          OpenFHE computes encrypted distances on the server. The
-                          client decrypts and sorts the final distances locally.
                         </div>
                       )}
 
@@ -492,7 +477,7 @@ export default function PoiSearchPage() {
 
                       {form.scheme === "all" && (
                         <div className="full-width poi-alert">
-                          All mode currently runs plaintext, CKKS, BFV, and OpenFHE.
+                          All mode runs plaintext, CKKS, and OpenFHE Scheme Switching.
                         </div>
                       )}
                     </>
@@ -519,7 +504,7 @@ export default function PoiSearchPage() {
                   <h3>Results</h3>
                   <p>
                     {mode === "all"
-                      ? "Comparison across plaintext, CKKS, BFV, and OpenFHE."
+                      ? "Comparison across plaintext, CKKS, and OpenFHE Scheme Switching."
                       : form.searchType === "name"
                       ? "Returned POIs matching the entered name."
                       : "Returned nearest points of interest."}
@@ -531,7 +516,7 @@ export default function PoiSearchPage() {
                     {form.searchType === "name"
                       ? "Searching by name..."
                       : form.scheme === "all"
-                      ? "Running plaintext, CKKS, BFV, and OpenFHE..."
+                      ? "Running plaintext, CKKS, and OpenFHE Scheme Switching..."
                       : form.scheme === "concrete"
                       ? "Running Concrete FHE — this may take several minutes..."
                       : form.scheme === "openfhe_ss"

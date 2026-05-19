@@ -100,16 +100,22 @@ class ConcreteClientAdapter(ClientCryptoAdapter):
         within the compiled numeric range.
         """
         n = int(local_state["n_candidates"])
+        actual_n = len(candidates)
 
-        if len(candidates) < n:
-            raise ValueError(
-                f"Concrete N={n} circuit requires at least {n} candidates, "
-                f"but only {len(candidates)} were returned."
-            )
+        if actual_n == 0:
+            raise ValueError("Concrete: no candidates returned for the category.")
+
+        # Pad to circuit size N by cycling through real candidates.
+        # Duplicates share coordinates with their originals, so the circuit's
+        # strict `d < min_dist` comparison ensures they can never beat the real
+        # nearest POI.  All internal IDs still map to valid POI records.
+        padded = list(candidates)
+        for i in range(n - actual_n):
+            padded.append(candidates[i % actual_n])
 
         items = []
 
-        for index, candidate in enumerate(candidates[:n], start=1):
+        for index, candidate in enumerate(padded, start=1):
             px = (
                 quantize_metric_coordinate(float(candidate["lon_m"]), quant_config)
                 - ORIGIN_X_Q

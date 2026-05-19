@@ -5,15 +5,15 @@ from typing import cast
 
 from fastapi import HTTPException
 
+from ....core.concrete_client_runtime import SUPPORTED_N as _CONCRETE_SUPPORTED_N
 from ....core.metrics import StepTimer
 from ....infrastructure.grpc_client import (
+    get_from_service_provider,
     post_to_service_provider,
     upload_concrete_keys_to_service_provider,
 )
-from ..crypto.bfv_client import BFVClientAdapter
 from ..crypto.ckks_client import CKKSClientAdapter
 from ..crypto.concrete_client import ConcreteClientAdapter
-from ..crypto.openfhe_client import OpenFHEClientAdapter
 from ..crypto.plaintext_client import PlaintextClientAdapter
 from ..schemas import NearestKClientRequest
 
@@ -34,20 +34,10 @@ def _compute_payload_sizes(scheme: str, prepared: dict) -> dict:
     metadata = enc_query.get("metadata") or {}
     local_state = prepared.get("local_state") or {}
 
-    if scheme in {"ckks", "bfv"}:
+    if scheme == "ckks":
         return {
             "ciphertext_bytes": _b64len(enc_query.get("payload") or ""),
             "key_bytes": _b64len(metadata.get("public_context") or ""),
-        }
-
-    if scheme == "openfhe":
-        ctx = metadata.get("crypto_context") or ""
-        evk = metadata.get("eval_mult_keys") or ""
-        qy = metadata.get("encrypted_qy") or ""
-        qx = metadata.get("encrypted_qx") or ""
-        return {
-            "ciphertext_bytes": len(qy) + len(qx),
-            "key_bytes": len(ctx) + len(evk),
         }
 
     if scheme == "concrete":
@@ -76,12 +66,8 @@ def get_client_adapter(scheme: str):
         return PlaintextClientAdapter()
     if scheme == "ckks":
         return CKKSClientAdapter()
-    if scheme == "bfv":
-        return BFVClientAdapter()
     if scheme == "concrete":
         return ConcreteClientAdapter()
-    if scheme == "openfhe":
-        return OpenFHEClientAdapter()
     if scheme == "openfhe_ss":
         from ..crypto.openfhe_ss_client import OpenFHESSClientAdapter
         return OpenFHESSClientAdapter()
@@ -100,9 +86,17 @@ async def _execute_single_scheme(request: NearestKClientRequest) -> dict:
     total_timer = StepTimer()
 
     if request.scheme == "openfhe_ss":
-        from ....core.openfhe_ss_runtime_instance import get_openfhe_ss_runtime
+        # Validate the category has enough POIs before generating keys.
+        count_response = await get_from_service_provider(
+            f"/service/poi/category-count?category={request.category}"
+        )
+        actual_count = int(count_response.get("count", 0))
 
-        n_candidates = get_openfhe_ss_runtime().n
+        if actual_count < 1:
+            raise HTTPException(
+                status_code=422,
+                detail=f"No POIs found for category '{request.category}'.",
+            )
 
         prepare_timer = StepTimer()
         prepared = adapter.prepare_query(
@@ -110,6 +104,7 @@ async def _execute_single_scheme(request: NearestKClientRequest) -> dict:
             longitude=request.longitude_m,
             k=request.k,
         )
+        n_candidates = prepared["encrypted_query"]["metadata"]["n_candidates"]  # N_SS=128
         prepare_query_ms = prepare_timer.elapsed_ms()
         metadata = prepared["encrypted_query"]["metadata"]
 
@@ -195,7 +190,29 @@ async def _execute_single_scheme(request: NearestKClientRequest) -> dict:
         }
 
     if request.scheme == "concrete":
-        n_candidates = getattr(request, "n_candidates", 2)
+        if request.n_candidates is not None:
+            n_candidates = request.n_candidates
+        else:
+            count_response = await get_from_service_provider(
+                f"/service/poi/category-count?category={request.category}"
+            )
+            actual_count = int(count_response.get("count", 0))
+            if actual_count < 1:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"No POIs found for category '{request.category}'.",
+                )
+            suitable = [n for n in _CONCRETE_SUPPORTED_N if n >= actual_count]
+            if not suitable:
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        f"Category '{request.category}' has {actual_count} POIs "
+                        f"which exceeds the largest compiled Concrete circuit "
+                        f"(N={max(_CONCRETE_SUPPORTED_N)}). Use a different scheme."
+                    ),
+                )
+            n_candidates = min(suitable)
 
         prepare_timer = StepTimer()
         prepared = adapter.prepare_query(
@@ -401,7 +418,7 @@ async def execute_nearest_k(request: NearestKClientRequest) -> dict:
 
     runs = []
 
-    for scheme in ["plaintext", "ckks", "bfv", "openfhe", "openfhe_ss"]:
+    for scheme in ["plaintext", "ckks", "openfhe_ss"]:
         scheme_request = NearestKClientRequest(
             category=request.category,
             k=request.k,

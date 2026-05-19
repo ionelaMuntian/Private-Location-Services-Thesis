@@ -5,8 +5,8 @@ from typing import Any, List, Literal
 from pydantic import BaseModel, Field, model_validator
 
 
-SingleSchemeType = Literal["plaintext", "ckks", "bfv", "concrete", "openfhe", "openfhe_ss"]
-SchemeType = Literal["plaintext", "ckks", "bfv", "concrete", "openfhe", "openfhe_ss"]
+SingleSchemeType = Literal["plaintext", "ckks", "concrete", "openfhe_ss"]
+SchemeType = Literal["plaintext", "ckks", "concrete", "openfhe_ss"]
 
 
 class ServerTimingMetrics(BaseModel):
@@ -51,7 +51,7 @@ class ServiceProviderNearestKRequest(BaseModel):
             raise ValueError("plaintext_query is required when scheme='plaintext'")
 
         if (
-            self.scheme in {"ckks", "bfv", "concrete", "openfhe"}
+            self.scheme in {"ckks", "concrete"}
             and self.encrypted_query is None
         ):
             raise ValueError(
@@ -59,7 +59,7 @@ class ServiceProviderNearestKRequest(BaseModel):
             )
 
         if (
-            self.scheme in {"ckks", "bfv", "concrete", "openfhe"}
+            self.scheme in {"ckks", "concrete"}
             and self.encrypted_query is not None
         ):
             forbidden = {
@@ -216,7 +216,7 @@ class OpenFHESSUploadKeysRequest(BaseModel):
     public_key_b64: str
     eval_mult_keys_b64: str
     eval_automorphism_keys_b64: str = ""
-    n_candidates: int = Field(16, ge=1, le=64)
+    n_candidates: int = Field(128, ge=1, le=256)
 
 
 class OpenFHESSUploadKeysResponse(BaseModel):
@@ -229,7 +229,7 @@ class OpenFHESSEvaluateRequest(BaseModel):
     encrypted_qy: str
     encrypted_qx: str
     category: str
-    n_candidates: int = Field(16, ge=1, le=64)
+    n_candidates: int = Field(128, ge=1, le=256)
 
 
 class OpenFHESSEvaluateResponse(BaseModel):

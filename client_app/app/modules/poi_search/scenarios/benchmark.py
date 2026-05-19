@@ -3,7 +3,7 @@
 from ..schemas import NearestKClientRequest
 from .nearest_k import execute_nearest_k
 
-SUPPORTED_STANDARD_SCHEMES = ["plaintext", "ckks", "bfv", "openfhe"]
+SUPPORTED_STANDARD_SCHEMES = ["plaintext", "ckks", "openfhe_ss"]
 SUPPORTED_CONCRETE_N = [1, 2, 5, 10, 20]
 
 

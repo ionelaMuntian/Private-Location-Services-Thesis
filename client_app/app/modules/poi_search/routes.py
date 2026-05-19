@@ -20,7 +20,7 @@ class BenchmarkRequest(BaseModel):
     latitude_m: float
     longitude_m: float
     k: int = Field(1, ge=1, le=50)
-    schemes: list[str] = ["plaintext", "ckks", "bfv", "openfhe"]
+    schemes: list[str] = ["plaintext", "ckks", "openfhe_ss"]
     concrete_n_values: list[int] = [1, 2, 5, 10]
 
 

@@ -92,36 +92,22 @@ def _resolve_evaluation_keys_bytes(request: ConcreteEvaluationRequest) -> bytes:
 
 def execute_concrete_candidates(request: ConcreteCandidatesRequest) -> dict:
     """
-    Returns exactly n_candidates POIs for the requested category.
-    n_candidates must match one of the compiled circuit sizes: {SUPPORTED_N}.
+    Returns all POIs for the requested category.
+    The client selects the appropriate circuit size and handles padding.
     """
-    n = request.n_candidates
-
-    if n not in SUPPORTED_N:
-        raise HTTPException(
-            status_code=422,
-            detail=(
-                f"n_candidates={n} is not supported. "
-                f"Must be one of {SUPPORTED_N}."
-            ),
-        )
-
     total_timer = StepTimer()
     candidate_timer = StepTimer()
 
     candidates = repository.get_all_by_category(
         category=request.category,
-        limit=n,
+        limit=1000,
     )
     candidate_selection_ms = candidate_timer.elapsed_ms()
 
-    if len(candidates) < n:
+    if not candidates:
         raise HTTPException(
             status_code=422,
-            detail=(
-                f"Concrete N={n} circuit requires at least {n} candidates in "
-                f"category '{request.category}', but found {len(candidates)}."
-            ),
+            detail=f"No POIs found for category '{request.category}'.",
         )
 
     normalized = [
@@ -134,7 +120,7 @@ def execute_concrete_candidates(request: ConcreteCandidatesRequest) -> dict:
             "lat_m": item["lat_m"],
             "lon_m": item["lon_m"],
         }
-        for item in candidates[:n]
+        for item in candidates
     ]
 
     total_ms = total_timer.elapsed_ms()
@@ -154,6 +140,7 @@ def execute_concrete_candidates(request: ConcreteCandidatesRequest) -> dict:
                 "returned_count": len(normalized),
                 "k": request.k,
                 "category": request.category,
+                "n_candidates": request.n_candidates,
             },
         },
     }

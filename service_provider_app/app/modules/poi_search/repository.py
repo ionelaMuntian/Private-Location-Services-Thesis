@@ -147,6 +147,18 @@ class PoiRepository:
 
         return [dict(row) for row in rows]
 
+    def count_by_category(self, category: str) -> int:
+        sql = f"""
+        SELECT COUNT(*)
+        FROM {self.schema}.{self.table}
+        WHERE lower(category) = lower(%(category)s);
+        """
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, {"category": category})
+                row = cur.fetchone()
+        return int(row[0]) if row else 0
+
     def list_categories(self) -> list[str]:
         sql = f"""
         SELECT DISTINCT category

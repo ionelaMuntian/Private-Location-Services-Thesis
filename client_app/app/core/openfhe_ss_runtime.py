@@ -16,12 +16,13 @@ from openfhe import (
 FLEXIBLEAUTO = getattr(openfhe, "FLEXIBLEAUTO", openfhe.ScalingTechnique.FLEXIBLEAUTO)
 HYBRID = getattr(openfhe, "HYBRID", openfhe.KeySwitchTechnique.HYBRID)
 
-N_SS_CANDIDATES = 16
+# Fixed batch size for all categories.  Next power of 2 above the largest
+# category in the UI (bank=122).  Using one fixed N avoids OpenFHE's global
+# eval-mult key registry conflicts when multiple N-value contexts coexist.
+N_SS = 128
 
-# EvalMinSchemeSwitching needs 9+3+1+log2(16)=17 levels on a fresh ciphertext.
-# The dist² pre-processing (dy², dx², scaling) consumes ~4 levels before SS is called.
-# Total depth must cover both: 17 (SS) + 4 (dist²) = 21.
-_SS_DEPTH = 21
+# EvalMinSchemeSwitching depth: 9+3+1+log2(128)+4 = 24
+_SS_DEPTH = 24
 
 
 def _b64encode(data: bytes) -> str:
@@ -65,26 +66,17 @@ def _get_toy_param():
 
 class OpenFHESSClientRuntime:
     """
-    CKKS + FHEW scheme-switching runtime for server-side nearest-POI argmin.
+    CKKS + FHEW scheme-switching runtime for nearest-POI argmin.
 
-    The client encrypts query coordinates under CKKS and uploads evaluation keys
-    (including scheme-switching keys) to the service provider.  The server
-    computes encrypted squared distances, then runs EvalMinSchemeSwitching to
-    find the argmin entirely on the server side.  The argmin one-hot ciphertext
-    is returned to the client for decryption.
-
-    The server never sees the plaintext query coordinates.
-    The client decrypts only the winner index, not all distances.
+    Uses a fixed batch size N_SS=128 for all categories.  The server fetches all
+    real candidates for a category and pads the remaining slots with large dummy
+    distances so the argmin always lands on a real POI.  The client restricts the
+    winner search to the first len(candidates) slots of the decrypted one-hot vector.
     """
 
-    n: int = N_SS_CANDIDATES
-
     def __init__(self) -> None:
+        self.n = N_SS
         self.cc, self.keys = self._setup()
-
-    # ------------------------------------------------------------------
-    # Context + key setup
-    # ------------------------------------------------------------------
 
     def _setup(self):
         SchSwchParams = getattr(openfhe, "SchSwchParams", None)
@@ -96,6 +88,8 @@ class OpenFHESSClientRuntime:
         HEStd_NotSet = _get_hestd_not_set()
         TOY = _get_toy_param()
 
+        print(f"[OpenFHE SS] Setting up: n={self.n}, depth={_SS_DEPTH}", flush=True)
+
         params = CCParamsCKKSRNS()
         params.SetMultiplicativeDepth(_SS_DEPTH)
         params.SetScalingModSize(52)
@@ -105,7 +99,7 @@ class OpenFHESSClientRuntime:
         params.SetNumLargeDigits(3)
         params.SetKeySwitchTechnique(HYBRID)
         params.SetSecurityLevel(HEStd_NotSet)
-        params.SetRingDim(1 << 14)  # 16384; required when HEStd_NotSet is used; keeps SS keys < 400 MB
+        params.SetRingDim(1 << 14)
 
         cc = GenCryptoContext(params)
         cc.Enable(PKESchemeFeature.PKE)
@@ -118,7 +112,6 @@ class OpenFHESSClientRuntime:
         keys = cc.KeyGen()
         cc.EvalMultKeyGen(keys.secretKey)
 
-        # Scheme-switching parameters
         ss_params = SchSwchParams()
         ss_params.SetSecurityLevelCKKS(HEStd_NotSet)
         ss_params.SetSecurityLevelFHEW(TOY)
@@ -127,24 +120,13 @@ class OpenFHESSClientRuntime:
         ss_params.SetComputeArgmin(True)
         ss_params.SetOneHotEncoding(True)
 
-        # EvalSchemeSwitchingSetup returns the LWE private key directly (v1.5.1 API)
         lwe_sk = cc.EvalSchemeSwitchingSetup(ss_params)
-
-        # Get the embedded BinFHE context and generate bootstrapping keys
         bfhcc = cc.GetBinCCForSchemeSwitch()
         bfhcc.BTKeyGen(lwe_sk)
-
-        # Generate CKKS scheme-switching evaluation keys
         cc.EvalSchemeSwitchingKeyGen(keys, lwe_sk)
-
-        # Precompute linear-transform matrices for CKKS→FHEW step
         cc.EvalCKKStoFHEWPrecompute()
 
         return cc, keys
-
-    # ------------------------------------------------------------------
-    # Serialization
-    # ------------------------------------------------------------------
 
     def serialize_crypto_context(self) -> str:
         return _serialize_to_b64(self.cc)
@@ -162,39 +144,16 @@ class OpenFHESSClientRuntime:
         finally:
             Path(path).unlink(missing_ok=True)
 
-    def serialize_eval_automorphism_keys(self) -> str:
-        with tempfile.NamedTemporaryFile(delete=False) as tmp:
-            path = tmp.name
-        try:
-            if not self.cc.SerializeEvalAutomorphismKey(path, BINARY):
-                raise RuntimeError("OpenFHE SS: failed to serialize EvalAutomorphism keys.")
-            return _b64encode(Path(path).read_bytes())
-        finally:
-            Path(path).unlink(missing_ok=True)
-
-    # ------------------------------------------------------------------
-    # Encryption
-    # ------------------------------------------------------------------
-
     def encrypt_broadcast(self, value: float) -> str:
-        """Encrypts one scalar broadcast into all n slots: [v, v, ..., v]."""
         pt = self.cc.MakeCKKSPackedPlaintext([float(value)] * self.n)
         ct = self.cc.Encrypt(self.keys.publicKey, pt)
         return _serialize_to_b64(ct)
 
-    # ------------------------------------------------------------------
-    # Decryption of server-side argmin result
-    # ------------------------------------------------------------------
-
-    def decrypt_argmin_via_ss(self, dist2_ct_b64: str) -> int:
+    def decrypt_argmin_via_ss(self, dist2_ct_b64: str, actual_n: int) -> int:
         """
-        Applies EvalMinSchemeSwitching locally on the encrypted dist² ciphertext
-        returned by the server, then decrypts only the one-hot argmin result.
-
-        The full key set (eval-mult, eval-automorphism, BinFHE BTKeys, LKSK) is
-        available on the client because it generated them.  The server does the
-        CKKS distance computation; the client does the scheme-switching argmin.
-        Privacy is preserved: the client learns only the winner index, not all distances.
+        Runs EvalMinSchemeSwitching on the encrypted dist² ciphertext, then
+        decrypts the one-hot argmin and restricts the winner search to the first
+        actual_n slots (the real candidates; remaining slots are padding).
         """
         path = _write_b64_to_temp_file(dist2_ct_b64)
         try:
@@ -205,11 +164,12 @@ class OpenFHESSClientRuntime:
             Path(path).unlink(missing_ok=True)
 
         print(
-            "[OpenFHE SS] Running EvalMinSchemeSwitching locally (CKKS→FHEW scheme-switching argmin)...",
+            f"[OpenFHE SS] EvalMinSchemeSwitching (n={self.n}, actual_candidates={actual_n})...",
             flush=True,
         )
-        # Returns [ct_min, ct_argmin]; ct_argmin is one-hot with ~1.0 at the winner slot.
-        result = self.cc.EvalMinSchemeSwitching(ct, self.keys.publicKey, self.n, self.n)
+        result = self.cc.EvalMinSchemeSwitching(
+            ct, self.keys.publicKey, self.n, self.n
+        )
         argmin_ct = result[1]
 
         pt = self.cc.Decrypt(argmin_ct, self.keys.secretKey)
@@ -219,10 +179,12 @@ class OpenFHESSClientRuntime:
         if not values:
             raise ValueError("OpenFHE SS: empty argmin result.")
 
+        # Restrict winner search to real candidates only (padding slots have large distances)
+        real_values = values[:actual_n]
         print(
-            f"[OpenFHE SS] Argmin one-hot slots: {[f'{v:.4f}' for v in values]}",
+            f"[OpenFHE SS] Argmin one-hot (first {actual_n}): {[f'{v:.4f}' for v in real_values]}",
             flush=True,
         )
-        winner_idx = max(range(len(values)), key=lambda i: abs(values[i]))
-        print(f"[OpenFHE SS] Scheme-switching argmin winner: slot {winner_idx}", flush=True)
+        winner_idx = max(range(len(real_values)), key=lambda i: abs(real_values[i]))
+        print(f"[OpenFHE SS] Winner: slot {winner_idx}", flush=True)
         return winner_idx

@@ -1,8 +1,6 @@
 # service_provider_app/app/modules/poi_search/scenarios/nearest_k.py
 from fastapi import HTTPException
-from ..engines.openfhe_engine import OpenFHEEngine
 from ....core.metrics import StepTimer
-from ..engines.bfv_engine import BFVEngine
 from ..engines.ckks_engine import CKKSEngine
 from ..engines.concrete_engine import ConcreteEngine
 from ..engines.plaintext_engine import PlaintextEngine
@@ -17,12 +15,8 @@ def get_engine(scheme: str):
         return PlaintextEngine()
     if scheme == "ckks":
         return CKKSEngine()
-    if scheme == "bfv":
-        return BFVEngine()
     if scheme == "concrete":
         return ConcreteEngine()
-    if scheme == "openfhe":
-        return OpenFHEEngine()
     raise HTTPException(status_code=400, detail=f"Unsupported scheme: {scheme}")
 
 def execute_nearest_k(request: ServiceProviderNearestKRequest) -> dict:
@@ -75,7 +69,7 @@ def execute_nearest_k(request: ServiceProviderNearestKRequest) -> dict:
     # The client decrypts and sorts locally — the server never learns
     # the user's location or which POI is closest.
     # ------------------------------------------------------------------
-    if request.scheme in {"ckks", "bfv", "openfhe"}:
+    if request.scheme == "ckks":
         if request.encrypted_query is None:
             raise HTTPException(
                 status_code=422,

@@ -88,6 +88,13 @@ class ServiceProviderGatewayServicer(
                 result = poi_service.openfhe_ss_evaluate(dto)
                 return _json_response(200, result)
 
+            if method == "GET" and clean_path == "/service/poi/category-count":
+                category_values = query_params.get("category", [])
+                if not category_values:
+                    return _json_response(422, {"detail": "Missing required query parameter: category"})
+                result = poi_service.category_count(category=category_values[0])
+                return _json_response(200, result)
+
             if method == "GET" and clean_path == "/service/poi/search-by-name":
                 q_values = query_params.get("q", [])
                 limit_values = query_params.get("limit", ["10"])

@@ -5,6 +5,12 @@ from time import time
 from typing import Any
 from uuid import uuid4
 
+
+def _next_power_of_2(n: int) -> int:
+    if n <= 1:
+        return 1
+    return 1 << (n - 1).bit_length()
+
 from fastapi import HTTPException
 
 import openfhe
@@ -24,11 +30,23 @@ from ..repository import PoiRepository
 _KEY_TTL_SECONDS = 60 * 60
 _KEY_STORE: dict[str, dict] = {}
 
+# Per-key_id deserialized crypto context cache.
+# OpenFHE stores eval-mult keys in a global in-process registry.
+# Re-deserializing the same context on every request causes registry collisions
+# when multiple N values coexist.  Caching the cc object avoids this: keys are
+# loaded once and remain registered for the lifetime of the key_id.
+_CC_CACHE: dict[str, Any] = {}
+
 repository = PoiRepository()
 
 # Must match DIST_SCALE_FACTOR used in client-side verification if needed.
 # Scale down large squared-metre distances to keep within CKKS precision.
 _DIST_SCALE = 1e-12
+
+# Fixed batch size matching the client runtime (N_SS=128).
+# All categories are padded to this size; the client restricts the winner
+# search to the first len(candidates) real slots.
+_BATCH_SIZE = 128
 
 
 # ---------------------------------------------------------------------------
@@ -68,6 +86,7 @@ def _cleanup_expired_keys() -> None:
     ]
     for kid in expired:
         _KEY_STORE.pop(kid, None)
+        _CC_CACHE.pop(kid, None)
 
 
 # ---------------------------------------------------------------------------
@@ -203,25 +222,35 @@ def execute_openfhe_ss_evaluate(
             ),
         )
 
-    # --- Fetch candidates -----------------------------------------------
+    # --- Fetch all real candidates for the category ---------------------
     candidate_timer = StepTimer()
-    candidates = repository.get_all_by_category(category=category, limit=n)
+    candidates = repository.get_all_by_category(category=category)
     candidate_ms = candidate_timer.elapsed_ms()
+    actual_n = len(candidates)
 
-    if len(candidates) < n:
+    if actual_n == 0:
+        raise HTTPException(
+            status_code=422,
+            detail=f"No POIs found for category '{category}'.",
+        )
+    if actual_n > _BATCH_SIZE:
         raise HTTPException(
             status_code=422,
             detail=(
-                f"OpenFHE SS requires at least {n} candidates in category "
-                f"'{category}', found {len(candidates)}."
+                f"Category '{category}' has {actual_n} POIs which exceeds "
+                f"the maximum batch size of {_BATCH_SIZE}."
             ),
         )
-    candidates = candidates[:n]
 
-    # --- Load crypto context + evaluation keys --------------------------
-    print("[OpenFHE SS] Loading crypto context...", flush=True)
-    cc = _load_crypto_context(entry["crypto_context_b64"])
-    _load_eval_mult_keys(cc, entry["eval_mult_keys_b64"])
+    # --- Load crypto context + evaluation keys (cached per key_id) ------
+    if key_id not in _CC_CACHE:
+        print(f"[OpenFHE SS] Loading crypto context for key_id={key_id[:8]}...", flush=True)
+        cc = _load_crypto_context(entry["crypto_context_b64"])
+        _load_eval_mult_keys(cc, entry["eval_mult_keys_b64"])
+        _CC_CACHE[key_id] = cc
+    else:
+        print(f"[OpenFHE SS] Reusing cached context for key_id={key_id[:8]}.", flush=True)
+    cc = _CC_CACHE[key_id]
 
     # --- Deserialise encrypted query coordinates ------------------------
     ct_qy = _load_ciphertext(encrypted_qy)
@@ -229,7 +258,11 @@ def execute_openfhe_ss_evaluate(
 
     # --- Compute vectorised scaled dist² --------------------------------
     compute_timer = StepTimer()
-    print("[OpenFHE SS] Computing encrypted distances...", flush=True)
+    print(
+        f"[OpenFHE SS] Computing distances: {actual_n} real candidates, "
+        f"batch_size={_BATCH_SIZE}...",
+        flush=True,
+    )
 
     py_vals = [float(c["lat_m"]) for c in candidates]
     px_vals = [float(c["lon_m"]) for c in candidates]
@@ -245,9 +278,17 @@ def execute_openfhe_ss_evaluate(
 
     dist2_ct = cc.EvalAdd(dy2, dx2)
 
-    # Scale to avoid floating-point overflow in the FHEW domain
-    scale_plain = cc.MakeCKKSPackedPlaintext([_DIST_SCALE] * n)
+    # Scale all _BATCH_SIZE slots so padding slots get a non-zero scale.
+    scale_plain = cc.MakeCKKSPackedPlaintext([_DIST_SCALE] * _BATCH_SIZE)
     dist2_scaled = cc.EvalMult(dist2_ct, scale_plain)
+
+    # Force padding slots (actual_n.._BATCH_SIZE-1) to a large distance so
+    # they can never win the argmin.  Real city-scale distances are < 0.01
+    # after scaling, so 1.0 is safely dominant.
+    if actual_n < _BATCH_SIZE:
+        mask = [0.0] * actual_n + [1.0] * (_BATCH_SIZE - actual_n)
+        mask_plain = cc.MakeCKKSPackedPlaintext(mask)
+        dist2_scaled = cc.EvalAdd(dist2_scaled, mask_plain)
 
     compute_ms = compute_timer.elapsed_ms()
     print(f"[OpenFHE SS] Distances computed in {compute_ms:.1f}ms.", flush=True)
@@ -281,7 +322,7 @@ def execute_openfhe_ss_evaluate(
                 "total_ms": total_ms,
             },
             "workload": {
-                "candidate_count": n,
+                "candidate_count": actual_n,
                 "returned_count": 1,
                 "k": 1,
                 "category": category,
