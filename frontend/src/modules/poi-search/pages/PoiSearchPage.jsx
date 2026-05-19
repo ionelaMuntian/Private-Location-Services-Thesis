@@ -11,12 +11,13 @@ const REQUEST_TIMEOUT_MS = 1800000;
 
 const initialForm = {
   searchType: "category",
-  category: "bank",
+  category: "clinic",
   nameQuery: "",
   k: 2,
   latitude_m: 5902000.0,
   longitude_m: 2622000.0,
   scheme: "plaintext",
+  n_candidates: 10,
 };
 
 function formatMs(value) {
@@ -234,6 +235,7 @@ export default function PoiSearchPage() {
         latitude_m: Number(form.latitude_m),
         longitude_m: Number(form.longitude_m),
         scheme: form.scheme,
+        n_candidates: Number(form.n_candidates),
       };
 
       const response = await axios.post(API_URL, payload, {
@@ -377,13 +379,12 @@ export default function PoiSearchPage() {
                         value={form.category}
                         onChange={(e) => handleChange("category", e.target.value)}
                       >
-                        <option value="bank">bank</option>
-                        <option value="cafe">cafe</option>
-                        <option value="supermarket">supermarket</option>
-                        <option value="dentist">dentist</option>
-                        <option value="fitness_centre">fitness_centre</option>
-                        <option value="fast_food">fast_food</option>
+                        <option value="clinic">clinic</option>
                         <option value="pharmacy">pharmacy</option>
+                        <option value="university">university</option>
+                        <option value="bank">bank</option>
+                        <option value="hotel">hotel</option>
+                        <option value="restaurant">restaurant</option>
                       </select>
                     </label>
                   ) : (
@@ -448,6 +449,7 @@ export default function PoiSearchPage() {
                           <option value="bfv">bfv</option>
                           <option value="concrete">concrete</option>
                           <option value="openfhe">openfhe</option>
+                          <option value="openfhe_ss">openfhe_ss (scheme switching)</option>
                           <option value="all">all</option>
                         </select>
                       </label>
@@ -477,6 +479,14 @@ export default function PoiSearchPage() {
                         <div className="full-width poi-alert">
                           OpenFHE computes encrypted distances on the server. The
                           client decrypts and sorts the final distances locally.
+                        </div>
+                      )}
+
+                      {form.scheme === "openfhe_ss" && (
+                        <div className="full-width poi-alert">
+                          OpenFHE Scheme Switching — server computes argmin directly
+                          on encrypted distances via CKKS→FHEW switching. Returns
+                          top-1 result. First request may take longer (key setup).
                         </div>
                       )}
 
@@ -524,6 +534,8 @@ export default function PoiSearchPage() {
                       ? "Running plaintext, CKKS, BFV, and OpenFHE..."
                       : form.scheme === "concrete"
                       ? "Running Concrete FHE — this may take several minutes..."
+                      : form.scheme === "openfhe_ss"
+                      ? "Running OpenFHE Scheme Switching — please wait..."
                       : "Searching for nearest POIs..."}
                   </p>
                 )}

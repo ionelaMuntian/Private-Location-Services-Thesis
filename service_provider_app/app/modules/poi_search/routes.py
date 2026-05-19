@@ -7,6 +7,10 @@ from .schemas import (
     ConcreteCandidatesResponse,
     ConcreteEvaluationRequest,
     ConcreteEvaluationResponse,
+    OpenFHESSEvaluateRequest,
+    OpenFHESSEvaluateResponse,
+    OpenFHESSUploadKeysRequest,
+    OpenFHESSUploadKeysResponse,
     PoiNameSearchResponse,
     ServiceProviderNearestKRequest,
     ServiceProviderNearestKResponse,
@@ -35,6 +39,16 @@ def concrete_candidates(request: ConcreteCandidatesRequest):
 @router.post("/concrete/evaluate", response_model=ConcreteEvaluationResponse)
 def concrete_evaluate(request: ConcreteEvaluationRequest):
     return service.concrete_evaluate(request)
+
+
+@router.post("/openfhe-ss/upload-keys", response_model=OpenFHESSUploadKeysResponse)
+def openfhe_ss_upload_keys(request: OpenFHESSUploadKeysRequest):
+    return service.openfhe_ss_upload_keys(request)
+
+
+@router.post("/openfhe-ss/evaluate", response_model=OpenFHESSEvaluateResponse)
+def openfhe_ss_evaluate(request: OpenFHESSEvaluateRequest):
+    return service.openfhe_ss_evaluate(request)
 
 
 @router.get("/search-by-name", response_model=PoiNameSearchResponse)

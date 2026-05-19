@@ -1,5 +1,6 @@
 # client_app/app/modules/poi_search/scenarios/nearest_k.py
 
+import base64
 from typing import cast
 
 from fastapi import HTTPException
@@ -17,6 +18,59 @@ from ..crypto.plaintext_client import PlaintextClientAdapter
 from ..schemas import NearestKClientRequest
 
 
+def _b64len(s: str) -> int:
+    try:
+        return len(base64.b64decode(s)) if s else 0
+    except Exception:
+        return len(s) if s else 0
+
+
+def _compute_payload_sizes(scheme: str, prepared: dict) -> dict:
+    """Returns ciphertext_bytes and key_bytes for the prepared query."""
+    if scheme == "plaintext":
+        return {"ciphertext_bytes": 0, "key_bytes": 0}
+
+    enc_query = prepared.get("encrypted_query") or {}
+    metadata = enc_query.get("metadata") or {}
+    local_state = prepared.get("local_state") or {}
+
+    if scheme in {"ckks", "bfv"}:
+        return {
+            "ciphertext_bytes": _b64len(enc_query.get("payload") or ""),
+            "key_bytes": _b64len(metadata.get("public_context") or ""),
+        }
+
+    if scheme == "openfhe":
+        ctx = metadata.get("crypto_context") or ""
+        evk = metadata.get("eval_mult_keys") or ""
+        qy = metadata.get("encrypted_qy") or ""
+        qx = metadata.get("encrypted_qx") or ""
+        return {
+            "ciphertext_bytes": len(qy) + len(qx),
+            "key_bytes": len(ctx) + len(evk),
+        }
+
+    if scheme == "concrete":
+        enc_coords = metadata.get("encrypted_user_coords") or ""
+        eval_keys: bytes = local_state.get("evaluation_keys_bytes") or b""
+        return {
+            "ciphertext_bytes": _b64len(enc_coords),
+            "key_bytes": len(eval_keys),
+        }
+
+    if scheme == "openfhe_ss":
+        qy = metadata.get("encrypted_qy") or ""
+        qx = metadata.get("encrypted_qx") or ""
+        ctx = metadata.get("crypto_context_b64") or ""
+        emk = metadata.get("eval_mult_keys_b64") or ""
+        return {
+            "ciphertext_bytes": _b64len(qy) + _b64len(qx),
+            "key_bytes": _b64len(ctx) + _b64len(emk),
+        }
+
+    return {"ciphertext_bytes": 0, "key_bytes": 0}
+
+
 def get_client_adapter(scheme: str):
     if scheme == "plaintext":
         return PlaintextClientAdapter()
@@ -28,6 +82,9 @@ def get_client_adapter(scheme: str):
         return ConcreteClientAdapter()
     if scheme == "openfhe":
         return OpenFHEClientAdapter()
+    if scheme == "openfhe_ss":
+        from ..crypto.openfhe_ss_client import OpenFHESSClientAdapter
+        return OpenFHESSClientAdapter()
 
     raise HTTPException(status_code=400, detail=f"Unsupported scheme: {scheme}")
 
@@ -42,7 +99,11 @@ async def _execute_single_scheme(request: NearestKClientRequest) -> dict:
     adapter = get_client_adapter(request.scheme)
     total_timer = StepTimer()
 
-    if request.scheme == "concrete":
+    if request.scheme == "openfhe_ss":
+        from ....core.openfhe_ss_runtime_instance import get_openfhe_ss_runtime
+
+        n_candidates = get_openfhe_ss_runtime().n
+
         prepare_timer = StepTimer()
         prepared = adapter.prepare_query(
             latitude=request.latitude_m,
@@ -50,6 +111,101 @@ async def _execute_single_scheme(request: NearestKClientRequest) -> dict:
             k=request.k,
         )
         prepare_query_ms = prepare_timer.elapsed_ms()
+        metadata = prepared["encrypted_query"]["metadata"]
+
+        payload_sizes = {
+            "ciphertext_bytes": _b64len(metadata.get("encrypted_qy", "")),
+            "key_bytes": _b64len(metadata.get("crypto_context_b64", ""))
+            + _b64len(metadata.get("eval_mult_keys_b64", "")),
+        }
+
+        # --- Step 1: upload evaluation keys ---
+        upload_timer = StepTimer()
+        key_response = await post_to_service_provider(
+            "/service/poi/openfhe-ss/upload-keys",
+            {
+                "crypto_context_b64": metadata["crypto_context_b64"],
+                "public_key_b64": metadata["public_key_b64"],
+                "eval_mult_keys_b64": metadata["eval_mult_keys_b64"],
+                "n_candidates": n_candidates,
+            },
+        )
+        upload_keys_ms = upload_timer.elapsed_ms()
+
+        key_id = key_response.get("key_id")
+        if not key_id:
+            raise HTTPException(
+                status_code=502,
+                detail=f"OpenFHE SS key upload did not return key_id: {key_response}",
+            )
+
+        # --- Step 2: evaluate (vectorised dist² on server; argmin via SS on client) ---
+        evaluate_timer = StepTimer()
+        raw_response = await post_to_service_provider(
+            "/service/poi/openfhe-ss/evaluate",
+            {
+                "key_id": key_id,
+                "encrypted_qy": metadata["encrypted_qy"],
+                "encrypted_qx": metadata["encrypted_qx"],
+                "category": request.category,
+                "n_candidates": n_candidates,
+            },
+        )
+        evaluate_call_ms = evaluate_timer.elapsed_ms()
+
+        parse_timer = StepTimer()
+        parsed_results = adapter.parse_response(
+            raw_response,
+            prepared.get("local_state"),
+        )
+        parse_response_ms = parse_timer.elapsed_ms()
+
+        total_ms = total_timer.elapsed_ms()
+        server_metrics = raw_response.get("metrics", {})
+        server_timing = server_metrics.get("server", {})
+        workload = server_metrics.get("workload", {})
+
+        return {
+            "scheme": request.scheme,
+            "category": request.category,
+            "k": 1,
+            "results": parsed_results,
+            "metrics": {
+                "client": {
+                    "prepare_query_ms": prepare_query_ms,
+                    "upload_keys_ms": upload_keys_ms,
+                    "evaluate_call_ms": evaluate_call_ms,
+                    "parse_response_ms": parse_response_ms,
+                    "total_ms": total_ms,
+                },
+                "server": {
+                    "candidate_selection_ms": server_timing.get("candidate_selection_ms"),
+                    "computation_ms": server_timing.get("computation_ms"),
+                    "argmin_ms": server_timing.get("argmin_ms"),
+                    "total_ms": server_timing.get("total_ms"),
+                },
+                "workload": {
+                    "candidate_count": workload.get("candidate_count", n_candidates),
+                    "returned_count": len(parsed_results),
+                    "k": 1,
+                    "category": request.category,
+                },
+            },
+            "sizes": payload_sizes,
+        }
+
+    if request.scheme == "concrete":
+        n_candidates = getattr(request, "n_candidates", 2)
+
+        prepare_timer = StepTimer()
+        prepared = adapter.prepare_query(
+            latitude=request.latitude_m,
+            longitude=request.longitude_m,
+            k=request.k,
+            n=n_candidates,
+        )
+        prepare_query_ms = prepare_timer.elapsed_ms()
+        payload_sizes = _compute_payload_sizes("concrete", prepared)
 
         local_state = prepared.get("local_state") or {}
 
@@ -79,6 +235,7 @@ async def _execute_single_scheme(request: NearestKClientRequest) -> dict:
             {
                 "category": request.category,
                 "k": request.k,
+                "n_candidates": n_candidates,
             },
         )
         candidate_fetch_ms = candidate_fetch_timer.elapsed_ms()
@@ -111,6 +268,9 @@ async def _execute_single_scheme(request: NearestKClientRequest) -> dict:
             local_state,
         )
         parse_response_ms = parse_timer.elapsed_ms()
+
+        # Concrete always returns k=1 — override k in the response for clarity.
+        request = request.model_copy(update={"k": 1})
 
         total_ms = total_timer.elapsed_ms()
 
@@ -166,6 +326,7 @@ async def _execute_single_scheme(request: NearestKClientRequest) -> dict:
             "k": request.k,
             "results": parsed_results,
             "metrics": metrics,
+            "sizes": payload_sizes,
         }
 
     prepare_timer = StepTimer()
@@ -175,6 +336,7 @@ async def _execute_single_scheme(request: NearestKClientRequest) -> dict:
         k=request.k,
     )
     prepare_query_ms = prepare_timer.elapsed_ms()
+    payload_sizes = _compute_payload_sizes(request.scheme, prepared)
 
     service_payload = {
         "category": request.category,
@@ -229,6 +391,7 @@ async def _execute_single_scheme(request: NearestKClientRequest) -> dict:
                 "category": request.category,
             },
         },
+        "sizes": payload_sizes,
     }
 
 
@@ -238,7 +401,7 @@ async def execute_nearest_k(request: NearestKClientRequest) -> dict:
 
     runs = []
 
-    for scheme in ["plaintext", "ckks", "bfv", "openfhe"]:
+    for scheme in ["plaintext", "ckks", "bfv", "openfhe", "openfhe_ss"]:
         scheme_request = NearestKClientRequest(
             category=request.category,
             k=request.k,

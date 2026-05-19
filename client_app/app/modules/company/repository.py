@@ -8,7 +8,6 @@ from ...infrastructure.company_db import get_company_connection
 _COMPANY_SCHEMA = "company"
 _USER_SCHEMA = "user_data"
 
-
 class CompanyRepository:
     def __init__(self) -> None:
         self.auth_schema = settings.auth_db_schema
@@ -280,6 +279,7 @@ class CompanyRepository:
 
         return dict(row) if row else None
 
+
     def delete_company(self, company_id: int, admin_user_id: int) -> bool:
         sql = f"""
         DELETE FROM {_COMPANY_SCHEMA}.companies
@@ -375,6 +375,7 @@ class CompanyRepository:
         WHERE company_id = %(company_id)s AND user_id = %(user_id)s
         LIMIT 1;
         """
+
 
         with get_company_connection() as conn:
             with conn.cursor() as cur:

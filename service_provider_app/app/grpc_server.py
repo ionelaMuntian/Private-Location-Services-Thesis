@@ -14,6 +14,8 @@ from .modules.poi_search.engines.core_concrete import execute_concrete_upload_ke
 from .modules.poi_search.schemas import (
     ConcreteCandidatesRequest,
     ConcreteEvaluationRequest,
+    OpenFHESSEvaluateRequest,
+    OpenFHESSUploadKeysRequest,
     ServiceProviderNearestKRequest,
 )
 from .modules.poi_search.service import PoiSearchServiceProviderService
@@ -21,7 +23,7 @@ from .modules.poi_search.service import PoiSearchServiceProviderService
 poi_service = PoiSearchServiceProviderService()
 company_service = CompanyComplianceService()
 
-GRPC_MAX_MESSAGE_SIZE = 1500 * 1024 * 1024
+GRPC_MAX_MESSAGE_SIZE = -1  # unlimited; senders are responsible for keeping payloads sane
 
 
 def _json_response(
@@ -74,6 +76,16 @@ class ServiceProviderGatewayServicer(
             if method == "POST" and clean_path == "/service/poi/concrete/evaluate":
                 dto = ConcreteEvaluationRequest(**payload)
                 result = poi_service.concrete_evaluate(dto)
+                return _json_response(200, result)
+
+            if method == "POST" and clean_path == "/service/poi/openfhe-ss/upload-keys":
+                dto = OpenFHESSUploadKeysRequest(**payload)
+                result = poi_service.openfhe_ss_upload_keys(dto)
+                return _json_response(200, result)
+
+            if method == "POST" and clean_path == "/service/poi/openfhe-ss/evaluate":
+                dto = OpenFHESSEvaluateRequest(**payload)
+                result = poi_service.openfhe_ss_evaluate(dto)
                 return _json_response(200, result)
 
             if method == "GET" and clean_path == "/service/poi/search-by-name":

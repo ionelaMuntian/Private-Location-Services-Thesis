@@ -4,58 +4,56 @@
 from fastapi import HTTPException
 
 from .base import ClientCryptoAdapter
-from ....core.concrete_client_runtime import ConcreteClientRuntime
+from ....core.concrete_client_runtime import ConcreteClientRuntime, SUPPORTED_N
 from .quantization import (
     QuantizationConfig,
     dequantize_squared_distance_to_km,
     quantize_metric_coordinate,
 )
 
-# For Concrete server-side encrypted sorting, the numeric range must be small.
-# Therefore, we use coarser quantization than the old distance-only circuit.
+# Coarse quantization keeps relative coordinates small, which is critical for
+# keeping Concrete evaluation key sizes and PBS latency manageable.
 quant_config = QuantizationConfig(scale_divisor=1000)
 
 # Local origin after quantization for the Cluj-Napoca dataset.
 # Actual data ranges (÷1000):
 #   lon_m_q: 2619..2626  →  relative X: 0..7
 #   lat_m_q: 5899..5904  →  relative Y: 0..5
-#
-# Both ranges fit within [0, 15], the range the Concrete circuit was compiled for.
 ORIGIN_X_Q = 2619
 ORIGIN_Y_Q = 5899
 
 
 class ConcreteClientAdapter(ClientCryptoAdapter):
-    def _create_runtime(self) -> ConcreteClientRuntime:
+    def _create_runtime(self, n: int) -> ConcreteClientRuntime:
         try:
-            return ConcreteClientRuntime()
+            return ConcreteClientRuntime(n)
         except Exception as exc:
             raise HTTPException(
                 status_code=503,
-                detail=f"Concrete client runtime unavailable: {exc}",
+                detail=f"Concrete client runtime unavailable for N={n}: {exc}",
             ) from exc
 
-    def prepare_query(self, latitude: float, longitude: float, k: int) -> dict:
+    def prepare_query(self, latitude: float, longitude: float, k: int, n: int = 2) -> dict:
         """
-        Prepares the Concrete query for server-side encrypted top-2 sorting.
+        Prepares the Concrete query for server-side encrypted minimum finding.
+
+        Args:
+            n: Number of POI candidates the circuit will process.
+               Must be one of SUPPORTED_N = {1, 2, 5, 10, 20}.
 
         The client encrypts only the user coordinates.
-        Candidate POI coordinates are public and are sent later as clear inputs.
-
-        Current limitation:
-          - The Concrete circuit is compiled for fixed top-2 sorting.
-          - Therefore, k can only be 1 or 2.
+        Concrete always returns k=1 (the single closest POI).
         """
-        if k > 2:
+        if n not in SUPPORTED_N:
             raise HTTPException(
                 status_code=422,
                 detail=(
-                    "Concrete server-side encrypted sorting currently supports "
-                    "only k=1 or k=2 because the circuit is compiled for top-2."
+                    f"Concrete circuit is compiled for N ∈ {SUPPORTED_N}. "
+                    f"Requested N={n} is not supported."
                 ),
             )
 
-        runtime = self._create_runtime()
+        runtime = self._create_runtime(n)
 
         qx = quantize_metric_coordinate(float(longitude), quant_config) - ORIGIN_X_Q
         qy = quantize_metric_coordinate(float(latitude), quant_config) - ORIGIN_Y_Q
@@ -69,9 +67,9 @@ class ConcreteClientAdapter(ClientCryptoAdapter):
                 "payload": None,
                 "metadata": {
                     "encrypted_user_coords": encrypted_user_coords_b64,
-                    "requested_k": k,
+                    "n_candidates": n,
                     "top_k_on_server": True,
-                    "sorting": "encrypted_top2_concrete_circuit",
+                    "sorting": f"encrypted_min_concrete_n{n}",
                     "quantization_scale_divisor": quant_config.scale_divisor,
                     "origin_x_q": ORIGIN_X_Q,
                     "origin_y_q": ORIGIN_Y_Q,
@@ -79,16 +77,9 @@ class ConcreteClientAdapter(ClientCryptoAdapter):
             },
             "local_state": {
                 "runtime": runtime,
-                "requested_k": k,
+                "n_candidates": n,
                 "evaluation_keys_bytes": evaluation_keys_bytes,
-
-                # Maps the small internal IDs used inside the Concrete circuit
-                # back to the real database POI records.
-                #
-                # The circuit should use internal IDs 1 and 2, not real DB IDs,
-                # because real DB IDs may be outside the compiled numeric range.
                 "candidate_by_internal_id": {},
-
                 "quantization_scale_divisor": quant_config.scale_divisor,
                 "origin_x_q": ORIGIN_X_Q,
                 "origin_y_q": ORIGIN_Y_Q,
@@ -102,19 +93,23 @@ class ConcreteClientAdapter(ClientCryptoAdapter):
         local_state: dict,
     ) -> list[dict]:
         """
-        Builds the clear/public POI inputs for the Concrete top-2 circuit.
+        Builds the clear/public POI inputs for the Concrete circuit.
 
-        Important:
-          - User coordinates are NOT included here.
-          - POI coordinates are clear because they come from the service provider DB.
-          - The circuit uses internal IDs 1 and 2 instead of real database IDs.
+        POI coordinates are public (from the service provider DB).
+        Internal IDs 1..N are used instead of real DB IDs so values stay
+        within the compiled numeric range.
         """
-        if len(candidates) < 2:
-            raise ValueError("Concrete top-2 circuit requires at least 2 candidates.")
+        n = int(local_state["n_candidates"])
+
+        if len(candidates) < n:
+            raise ValueError(
+                f"Concrete N={n} circuit requires at least {n} candidates, "
+                f"but only {len(candidates)} were returned."
+            )
 
         items = []
 
-        for index, candidate in enumerate(candidates[:2], start=1):
+        for index, candidate in enumerate(candidates[:n], start=1):
             px = (
                 quantize_metric_coordinate(float(candidate["lon_m"]), quant_config)
                 - ORIGIN_X_Q
@@ -137,8 +132,6 @@ class ConcreteClientAdapter(ClientCryptoAdapter):
 
             items.append(
                 {
-                    # Internal ID used by the Concrete circuit.
-                    # Must stay within the compiled range: 1 or 2.
                     "id": internal_id,
                     "name": candidate["name"],
                     "category": candidate["category"],
@@ -157,55 +150,42 @@ class ConcreteClientAdapter(ClientCryptoAdapter):
         local_state: dict | None = None,
     ) -> list[dict]:
         """
-        Parses the Concrete response.
+        Decrypts the server's encrypted minimum result and maps internal ID
+        back to the real POI record.
 
-        The server has already performed the encrypted sorting inside the Concrete
-        circuit. The client only decrypts the already-sorted IDs/distances and
-        maps internal IDs 1/2 back to real POI records.
-
-        No sorting is performed here.
+        No sorting is done here — the server's circuit already found the minimum.
         """
         if local_state is None or "runtime" not in local_state:
             raise ValueError("Missing Concrete runtime in local_state.")
 
-        runtime = local_state["runtime"]
-        requested_k = int(local_state["requested_k"])
+        runtime: ConcreteClientRuntime = local_state["runtime"]
         candidate_by_internal_id = local_state.get("candidate_by_internal_id", {})
 
-        encrypted_sorted_result = response_data.get("encrypted_sorted_result")
-        if encrypted_sorted_result is None:
-            raise ValueError("Missing encrypted_sorted_result in Concrete response.")
+        encrypted_best = response_data.get("encrypted_best_result")
+        if encrypted_best is None:
+            raise ValueError("Missing encrypted_best_result in Concrete response.")
 
-        # Already sorted by the server-side encrypted Concrete circuit.
-        sorted_items = runtime.decrypt_sorted_top2(encrypted_sorted_result)
+        best = runtime.decrypt_top1(encrypted_best)
 
-        results = []
+        internal_id = int(best["id"])
+        dist2_quantized = int(best["dist2"])
 
-        for sorted_item in sorted_items[:requested_k]:
-            internal_id = int(sorted_item["id"])
-            dist2_quantized = int(sorted_item["dist2"])
-
-            candidate = candidate_by_internal_id.get(internal_id)
-            if candidate is None:
-                raise ValueError(
-                    f"Decrypted internal POI id {internal_id} was not found "
-                    "in candidate_by_internal_id."
-                )
-
-            distance_km = dequantize_squared_distance_to_km(
-                dist2_quantized,
-                quant_config,
+        candidate = candidate_by_internal_id.get(internal_id)
+        if candidate is None:
+            raise ValueError(
+                f"Decrypted internal POI id {internal_id} not found in "
+                "candidate_by_internal_id."
             )
 
-            results.append(
-                {
-                    "id": candidate["id"],
-                    "name": candidate["name"],
-                    "category": candidate["category"],
-                    "latitude": candidate["latitude"],
-                    "longitude": candidate["longitude"],
-                    "distance_km": distance_km,
-                }
-            )
+        distance_km = dequantize_squared_distance_to_km(dist2_quantized, quant_config)
 
-        return results
+        return [
+            {
+                "id": candidate["id"],
+                "name": candidate["name"],
+                "category": candidate["category"],
+                "latitude": candidate["latitude"],
+                "longitude": candidate["longitude"],
+                "distance_km": distance_km,
+            }
+        ]

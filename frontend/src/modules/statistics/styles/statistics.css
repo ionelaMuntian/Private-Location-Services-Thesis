@@ -1,0 +1,148 @@
+/* Inherits all .poi-* base classes from poi-search.css */
+@import "../../poi-search/styles/poi-search.css";
+
+.stats-page {
+  position: relative;
+  min-height: 100vh;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+  background: linear-gradient(180deg, var(--cream-light) 0%, var(--cream) 100%);
+  font-family: "Inter", sans-serif;
+}
+
+.stats-config-card {
+  margin-bottom: 18px;
+}
+
+.stats-config-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+  margin-bottom: 20px;
+}
+
+.stats-label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: var(--text-main);
+  font-weight: 500;
+  font-size: 0.97rem;
+}
+
+.stats-input {
+  width: 100%;
+  border: 1px solid rgba(28, 105, 115, 0.14);
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 14px;
+  padding: 13px 14px;
+  font-size: 0.98rem;
+  color: var(--text-main);
+  outline: none;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.stats-input:focus {
+  border-color: rgba(28, 105, 115, 0.42);
+  box-shadow: 0 0 0 4px rgba(28, 105, 115, 0.08);
+}
+
+.stats-checkbox-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.stats-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(28, 105, 115, 0.16);
+  background: rgba(255, 255, 255, 0.72);
+  cursor: pointer;
+  font-size: 0.92rem;
+  font-weight: 500;
+  color: var(--text-main);
+  transition: all 0.15s ease;
+}
+
+.stats-checkbox-label:hover {
+  background: rgba(28, 105, 115, 0.07);
+}
+
+.stats-checkbox-label input[type="checkbox"] {
+  accent-color: var(--green);
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+}
+
+.stats-hint {
+  margin: 4px 0 0;
+  font-size: 0.84rem;
+  color: var(--text-soft);
+  font-weight: 400;
+}
+
+.stats-run-btn {
+  padding: 15px 36px;
+  border-radius: 14px;
+  border: none;
+  background: var(--green);
+  color: white;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.stats-run-btn:hover:not(:disabled) {
+  background: var(--green-hover);
+}
+
+.stats-run-btn:disabled {
+  opacity: 0.72;
+  cursor: not-allowed;
+}
+
+.stats-progress {
+  margin: 12px 0 0;
+  font-size: 0.94rem;
+  color: var(--green);
+  font-weight: 500;
+}
+
+.stats-section {
+  margin-bottom: 18px;
+}
+
+.stats-charts-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin-bottom: 32px;
+}
+
+.stats-chart-card {
+  min-height: 420px;
+}
+
+@media (max-width: 1200px) {
+  .stats-config-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .stats-charts-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .stats-config-grid {
+    grid-template-columns: 1fr;
+  }
+}

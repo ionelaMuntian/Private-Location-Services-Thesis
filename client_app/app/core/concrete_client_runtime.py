@@ -8,7 +8,9 @@ from concrete import fhe
 
 CLIENT_APP_DIR = Path(__file__).resolve().parents[2]
 ARTIFACTS_DIR = CLIENT_APP_DIR / ".artifacts" / "concrete"
-CLIENT_SPECS_PATH = ARTIFACTS_DIR / "client_specs.bin"
+
+SUPPORTED_N = [1, 2, 5, 10, 20]
+
 
 def _b64encode(data: bytes) -> str:
     return base64.b64encode(data).decode("utf-8")
@@ -18,15 +20,34 @@ def _b64decode(data: str) -> bytes:
     return base64.b64decode(data.encode("utf-8"))
 
 
+def _specs_path(n: int) -> Path:
+    return ARTIFACTS_DIR / f"client_specs_n{n}.bin"
+
+
 class ConcreteClientRuntime:
-    def __init__(self) -> None:
-        if not CLIENT_SPECS_PATH.exists():
-            raise FileNotFoundError(
-                f"Concrete client specs not found at {CLIENT_SPECS_PATH}. "
-                "Run client_app/tools/compile_distance_circuit.py first."
+    """
+    Client-side Concrete runtime for a specific N (number of POI candidates).
+
+    One instance per query — holds generated keys for that query's N value.
+    """
+
+    def __init__(self, n: int) -> None:
+        if n not in SUPPORTED_N:
+            raise ValueError(
+                f"Unsupported N={n}. Supported values: {SUPPORTED_N}. "
+                "Recompile the circuits if you need a different N."
             )
 
-        specs_bytes = CLIENT_SPECS_PATH.read_bytes()
+        self.n = n
+        path = _specs_path(n)
+
+        if not path.exists():
+            raise FileNotFoundError(
+                f"Concrete client specs not found at {path}. "
+                f"Run client_app/tools/compile_distance_circuit.py first."
+            )
+
+        specs_bytes = path.read_bytes()
         self.client_specs = fhe.ClientSpecs.deserialize(specs_bytes)
         self.client = fhe.Client(self.client_specs)
         self._keys_generated = False
@@ -36,102 +57,50 @@ class ConcreteClientRuntime:
             self.client.keygen()
             self._keys_generated = True
 
-    def serialize_evaluation_keys(self) -> str:
-        """
-        Backward-compatible base64 version.
-        The optimized gRPC flow should use serialize_evaluation_keys_bytes().
-        """
-        self.ensure_keys()
-        return _b64encode(self.client.evaluation_keys.serialize())
-
     def serialize_evaluation_keys_bytes(self) -> bytes:
-        """
-        Used by streaming gRPC upload.
-
-        This avoids sending Concrete evaluation keys as huge base64 JSON strings.
-        """
         self.ensure_keys()
         return self.client.evaluation_keys.serialize()
 
     def encrypt_user_coords(self, qx: int, qy: int) -> str:
         """
-        Encrypts the user's coordinates once.
+        Encrypts the user's two coordinates.
 
-        Current Concrete circuit signature has 8 inputs:
-
-          qx_rel, qy_rel,
-          p1x_rel, p1y_rel, p1_id,
-          p2x_rel, p2y_rel, p2_id
-
-        Only qx_rel and qy_rel are encrypted user values.
-        The remaining values are clear/public POI inputs, so dummy values are
-        passed here only to satisfy client.encrypt().
+        The circuit has 2 + N*3 inputs total.  Only qx_rel and qy_rel are
+        encrypted; the remaining N*(px, py, id) slots are clear POI inputs.
+        Dummy clear values (0 / 1) are passed here only to satisfy
+        client.encrypt() — they are replaced with real POI data at evaluation.
         """
         self.ensure_keys()
 
-        encrypted_args = self.client.encrypt(
-            int(qx),
-            int(qy),
-            0,
-            0,
-            1,
-            0,
-            0,
-            2,
-        )
+        args: list = [int(qx), int(qy)]
+        for i in range(1, self.n + 1):
+            args += [0, 0, i]
+
+        encrypted_args = self.client.encrypt(*args)
 
         payload = {
             "enc_qx": _b64encode(encrypted_args[0].serialize()),
             "enc_qy": _b64encode(encrypted_args[1].serialize()),
         }
-
         return _b64encode(json.dumps(payload).encode("utf-8"))
 
-    def decrypt_sorted_top2(self, encrypted_sorted_result: dict) -> list[dict]:
+    def decrypt_top1(self, encrypted_result: dict) -> dict:
         """
-        Decrypts the already-sorted encrypted result returned by the server.
+        Decrypts the encrypted (best_id, best_dist2) returned by the server.
 
-        The client does NOT sort here. The ordering was produced by the Concrete
-        circuit on the service-provider side.
-
-        Expected input:
-          {
-            "first_id": "...",
-            "first_dist2": "...",
-            "second_id": "...",
-            "second_dist2": "..."
-          }
+        The server performed the minimum-finding inside the FHE circuit.
+        The client only decrypts the result — no sorting here.
         """
         self.ensure_keys()
 
-        first_id_value = fhe.Value.deserialize(
-            _b64decode(encrypted_sorted_result["first_id"])
-        )
-        first_dist2_value = fhe.Value.deserialize(
-            _b64decode(encrypted_sorted_result["first_dist2"])
-        )
-        second_id_value = fhe.Value.deserialize(
-            _b64decode(encrypted_sorted_result["second_id"])
-        )
-        second_dist2_value = fhe.Value.deserialize(
-            _b64decode(encrypted_sorted_result["second_dist2"])
+        best_id_value = fhe.Value.deserialize(_b64decode(encrypted_result["best_id"]))
+        best_dist2_value = fhe.Value.deserialize(
+            _b64decode(encrypted_result["best_dist2"])
         )
 
-        first_id, first_dist2, second_id, second_dist2 = self.client.decrypt(
-            first_id_value, first_dist2_value, second_id_value, second_dist2_value
-        )
-        first_id = int(first_id)
-        first_dist2 = int(first_dist2)
-        second_id = int(second_id)
-        second_dist2 = int(second_dist2)
+        best_id, best_dist2 = self.client.decrypt(best_id_value, best_dist2_value)
 
-        return [
-            {
-                "id": first_id,
-                "dist2": first_dist2,
-            },
-            {
-                "id": second_id,
-                "dist2": second_dist2,
-            },
-        ]
+        return {
+            "id": int(best_id),
+            "dist2": int(best_dist2),
+        }

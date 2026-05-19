@@ -4,8 +4,8 @@ from typing import List, Literal, Union
 from pydantic import BaseModel, Field
 
 
-SingleSchemeType = Literal["plaintext", "ckks", "bfv", "concrete", "openfhe"]
-SchemeType = Literal["plaintext", "ckks", "bfv", "concrete", "openfhe", "all"]
+SingleSchemeType = Literal["plaintext", "ckks", "bfv", "concrete", "openfhe", "openfhe_ss"]
+SchemeType = Literal["plaintext", "ckks", "bfv", "concrete", "openfhe", "openfhe_ss", "all"]
 
 
 class ClientTimingMetrics(BaseModel):
@@ -57,6 +57,7 @@ class NearestKClientRequest(BaseModel):
         description="Projected metric longitude-like coordinate (EPSG:3857 X)",
     )
     scheme: SchemeType = "plaintext"
+    n_candidates: int = Field(2, ge=1, le=20)
 
 
 class PoiItem(BaseModel):

@@ -6,6 +6,8 @@ from pathlib import Path
 
 from concrete import fhe
 
+SUPPORTED_N = [1, 2, 5, 10, 20]
+
 
 def _b64decode(data: str) -> bytes:
     return base64.b64decode(data.encode("utf-8"))
@@ -15,13 +17,14 @@ def _b64encode(data: bytes) -> str:
     return base64.b64encode(data).decode("utf-8")
 
 
-def _find_server_path() -> Path:
+def _find_server_path(n: int) -> Path:
     current_file = Path(__file__).resolve()
+    filename = f"server_n{n}.zip"
 
     candidates = [
-        Path("/app/client_app/.artifacts/concrete/server.zip"),
-        current_file.parents[3] / "client_app" / ".artifacts" / "concrete" / "server.zip",
-        current_file.parents[2] / "client_app" / ".artifacts" / "concrete" / "server.zip",
+        Path(f"/app/client_app/.artifacts/concrete/{filename}"),
+        current_file.parents[3] / "client_app" / ".artifacts" / "concrete" / filename,
+        current_file.parents[2] / "client_app" / ".artifacts" / "concrete" / filename,
     ]
 
     for path in candidates:
@@ -29,72 +32,84 @@ def _find_server_path() -> Path:
             return path
 
     raise FileNotFoundError(
-        "Concrete server artifact not found. Checked:\n"
-        + "\n".join(str(path) for path in candidates)
+        f"Concrete server artifact for N={n} not found. Checked:\n"
+        + "\n".join(str(p) for p in candidates)
         + "\nRun client_app/tools/compile_distance_circuit.py first."
     )
 
 
-SERVER_PATH = _find_server_path()
-
-
 class ConcreteServerRuntime:
-    def __init__(self) -> None:
-        self.server = fhe.Server.load(SERVER_PATH)
+    """
+    Loads all compiled Concrete server circuits at startup and dispatches
+    evaluation to the circuit matching the requested N.
+    """
 
-    def run_sorted_top2_with_key_bytes(
+    def __init__(self) -> None:
+        self._servers: dict[int, fhe.Server] = {}
+
+        for n in SUPPORTED_N:
+            try:
+                path = _find_server_path(n)
+                self._servers[n] = fhe.Server.load(path)
+            except FileNotFoundError:
+                # Allow partial availability — missing circuits raise at query time.
+                pass
+
+    def run_find_minimum(
         self,
+        n: int,
         evaluation_keys_bytes: bytes,
         encrypted_user_coords_b64: str,
         items: list,
     ) -> dict:
         """
-        Runs the fixed top-2 Concrete sorting circuit.
+        Runs the N-POI find-minimum circuit.
 
-        The server performs the comparison and ordering inside the FHE circuit.
-        It does not learn which POI is closer because the sorted IDs and
-        distances are encrypted outputs.
+        Returns:
+          {"best_id": <b64>, "best_dist2": <b64>}
+          Both values are encrypted — the server never decrypts them.
         """
-        if len(items) < 2:
-            raise ValueError("Concrete server-side sorting requires exactly 2 candidates.")
+        if n not in self._servers:
+            raise ValueError(
+                f"Concrete server circuit for N={n} is not loaded. "
+                f"Available: {list(self._servers.keys())}. "
+                "Recompile the circuits."
+            )
 
-        item1 = items[0]
-        item2 = items[1]
+        if len(items) != n:
+            raise ValueError(
+                f"Concrete circuit for N={n} expects exactly {n} items, "
+                f"got {len(items)}."
+            )
 
+        server = self._servers[n]
         evaluation_keys = fhe.EvaluationKeys.deserialize(evaluation_keys_bytes)
 
         user_payload = json.loads(
             _b64decode(encrypted_user_coords_b64).decode("utf-8")
         )
-
         encrypted_qx = fhe.Value.deserialize(_b64decode(user_payload["enc_qx"]))
         encrypted_qy = fhe.Value.deserialize(_b64decode(user_payload["enc_qy"]))
 
-        result = self.server.run(
-            encrypted_qx,
-            encrypted_qy,
-            int(item1.px),
-            int(item1.py),
-            int(item1.id),
-            int(item2.px),
-            int(item2.py),
-            int(item2.id),
-            evaluation_keys=evaluation_keys,
-        )
+        # Build positional args: qx_enc, qy_enc, p1x, p1y, p1_id, ..., pNx, pNy, pN_id
+        args: list = [encrypted_qx, encrypted_qy]
+        for item in items:
+            args += [int(item.px), int(item.py), int(item.id)]
+
+        result = server.run(*args, evaluation_keys=evaluation_keys)
 
         if not isinstance(result, tuple):
             result = (result,)
 
-        if len(result) != 4:
+        if len(result) != 2:
             raise RuntimeError(
-                f"Expected 4 encrypted outputs from Concrete top-2 circuit, got {len(result)}."
+                f"Expected 2 encrypted outputs from Concrete N={n} circuit, "
+                f"got {len(result)}."
             )
 
-        first_id, first_dist2, second_id, second_dist2 = result
+        best_id, best_dist2 = result
 
         return {
-            "first_id": _b64encode(first_id.serialize()),
-            "first_dist2": _b64encode(first_dist2.serialize()),
-            "second_id": _b64encode(second_id.serialize()),
-            "second_dist2": _b64encode(second_dist2.serialize()),
+            "best_id": _b64encode(best_id.serialize()),
+            "best_dist2": _b64encode(best_dist2.serialize()),
         }

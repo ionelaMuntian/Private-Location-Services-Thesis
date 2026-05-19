@@ -5,8 +5,8 @@ from typing import Any, List, Literal
 from pydantic import BaseModel, Field, model_validator
 
 
-SingleSchemeType = Literal["plaintext", "ckks", "bfv", "concrete", "openfhe"]
-SchemeType = Literal["plaintext", "ckks", "bfv", "concrete", "openfhe"]
+SingleSchemeType = Literal["plaintext", "ckks", "bfv", "concrete", "openfhe", "openfhe_ss"]
+SchemeType = Literal["plaintext", "ckks", "bfv", "concrete", "openfhe", "openfhe_ss"]
 
 
 class ServerTimingMetrics(BaseModel):
@@ -111,6 +111,7 @@ class CandidatePoiItem(BaseModel):
 class ConcreteCandidatesRequest(BaseModel):
     category: str
     k: int = Field(..., gt=0, le=200)
+    n_candidates: int = Field(2, ge=1, le=20)
 
 
 class ConcreteCandidatesResponse(BaseModel):
@@ -167,24 +168,15 @@ class ConcreteEvaluationResultItem(BaseModel):
 
 
 class ConcreteSortedResult(BaseModel):
-    # Encrypted outputs of the Concrete top-2 sorting circuit.
+    # Encrypted outputs of the Concrete find-minimum circuit.
     # The server does not decrypt these values.
-    first_id: str
-    first_dist2: str
-    second_id: str
-    second_dist2: str
+    best_id: str
+    best_dist2: str
 
 
 class ConcreteEvaluationResponse(BaseModel):
     scheme: SingleSchemeType
-
-    # Old response format: encrypted distance per POI.
-    # Kept optional for backward compatibility.
-    encrypted_results: List[ConcreteEvaluationResultItem] | None = None
-
-    # New response format: already sorted encrypted outputs from the Concrete circuit.
-    encrypted_sorted_result: ConcreteSortedResult | None = None
-
+    encrypted_best_result: ConcreteSortedResult | None = None
     metadata: dict[str, Any]
     metrics: MetricsEnvelope
 
@@ -213,3 +205,35 @@ class PoiNameSearchResponse(BaseModel):
     query: str
     count: int
     results: List[PoiNameSearchItem]
+
+
+# ---------------------------------------------------------------------------
+# OpenFHE Scheme-Switching schemas
+# ---------------------------------------------------------------------------
+
+class OpenFHESSUploadKeysRequest(BaseModel):
+    crypto_context_b64: str
+    public_key_b64: str
+    eval_mult_keys_b64: str
+    eval_automorphism_keys_b64: str = ""
+    n_candidates: int = Field(16, ge=1, le=64)
+
+
+class OpenFHESSUploadKeysResponse(BaseModel):
+    key_id: str
+    expires_in_seconds: int
+
+
+class OpenFHESSEvaluateRequest(BaseModel):
+    key_id: str
+    encrypted_qy: str
+    encrypted_qx: str
+    category: str
+    n_candidates: int = Field(16, ge=1, le=64)
+
+
+class OpenFHESSEvaluateResponse(BaseModel):
+    scheme: SingleSchemeType
+    dist2_ct_b64: str
+    candidates: List[dict]
+    metrics: MetricsEnvelope

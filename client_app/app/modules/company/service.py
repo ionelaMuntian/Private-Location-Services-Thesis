@@ -475,6 +475,17 @@ class CompanyService:
             company_partial_west,
         )
 
+        print(
+            f"[Compliance] home_margin={home_margin:.6f} → at_home={_leq_zero(home_margin)} "
+            f"| office_margin={office_margin:.6f} → at_office={_leq_zero(office_margin)}",
+            flush=True,
+        )
+        print(
+            f"[Compliance] north={north_margin:.4f} south={south_margin:.4f} "
+            f"east={east_margin:.4f} west={west_margin:.4f}",
+            flush=True,
+        )
+
         final_at_home = _leq_zero(home_margin)
         final_at_office = _leq_zero(office_margin)
         final_in_country = (

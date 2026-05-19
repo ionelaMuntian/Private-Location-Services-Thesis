@@ -14,9 +14,8 @@ from ..generated import service_provider_pb2, service_provider_pb2_grpc
 
 GRPC_TIMEOUT_SECONDS = 600.0
 
-# Must stay below 2,147,483,647 bytes because gRPC options use signed int.
-# 1500 MB is enough for large OpenFHE/Concrete transfers without overflow.
-GRPC_MAX_MESSAGE_SIZE = 1500 * 1024 * 1024
+# -1 means unlimited; individual scheme implementations keep their payloads sane.
+GRPC_MAX_MESSAGE_SIZE = -1
 
 # Chunk size for streaming Concrete evaluation keys.
 # 4 MB chunks avoid building one huge gRPC message.

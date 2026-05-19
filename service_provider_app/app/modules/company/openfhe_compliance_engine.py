@@ -15,49 +15,46 @@ class OpenFHEComplianceEngine:
         cc = load_crypto_context(metadata["crypto_context"])
         print("[Compliance] loading eval mult keys...", flush=True)
         load_eval_mult_keys(cc, metadata["eval_mult_keys"])
-        print("[Compliance] loading ciphertexts...", flush=True)
-
-        current_lat = load_ciphertext(payload["encrypted_current_lat"])
-        current_lon = load_ciphertext(payload["encrypted_current_lon"])
-
-        home_lat = load_ciphertext(payload["encrypted_home_lat"])
-        home_lon = load_ciphertext(payload["encrypted_home_lon"])
-        home_radius = load_ciphertext(payload["encrypted_home_radius"])
-
-        office_lat = load_ciphertext(payload["encrypted_office_lat"])
-        office_lon = load_ciphertext(payload["encrypted_office_lon"])
-        office_radius = load_ciphertext(payload["encrypted_office_radius"])
-
-        country_north = load_ciphertext(payload["encrypted_country_north"])
-        country_south = load_ciphertext(payload["encrypted_country_south"])
-        country_east = load_ciphertext(payload["encrypted_country_east"])
-        country_west = load_ciphertext(payload["encrypted_country_west"])
-
+        # Fresh deserialization for every ciphertext use avoids any in-place
+        # level-reduction that OpenFHE's C++ Python bindings may perform on
+        # shared ciphertext objects across consecutive EvalMult/EvalSub calls.
         print("[Compliance] computing home margin...", flush=True)
         encrypted_home_margin = self._distance_margin(
             cc=cc,
-            current_lat=current_lat,
-            current_lon=current_lon,
-            target_lat=home_lat,
-            target_lon=home_lon,
-            radius=home_radius,
+            current_lat=load_ciphertext(payload["encrypted_current_lat"]),
+            current_lon=load_ciphertext(payload["encrypted_current_lon"]),
+            target_lat=load_ciphertext(payload["encrypted_home_lat"]),
+            target_lon=load_ciphertext(payload["encrypted_home_lon"]),
+            radius=load_ciphertext(payload["encrypted_home_radius"]),
         )
 
         print("[Compliance] computing office margin...", flush=True)
         encrypted_office_margin = self._distance_margin(
             cc=cc,
-            current_lat=current_lat,
-            current_lon=current_lon,
-            target_lat=office_lat,
-            target_lon=office_lon,
-            radius=office_radius,
+            current_lat=load_ciphertext(payload["encrypted_current_lat"]),
+            current_lon=load_ciphertext(payload["encrypted_current_lon"]),
+            target_lat=load_ciphertext(payload["encrypted_office_lat"]),
+            target_lon=load_ciphertext(payload["encrypted_office_lon"]),
+            radius=load_ciphertext(payload["encrypted_office_radius"]),
         )
 
         print("[Compliance] computing country margins...", flush=True)
-        encrypted_country_north_margin = cc.EvalSub(country_north, current_lat)
-        encrypted_country_south_margin = cc.EvalSub(current_lat, country_south)
-        encrypted_country_east_margin = cc.EvalSub(country_east, current_lon)
-        encrypted_country_west_margin = cc.EvalSub(current_lon, country_west)
+        encrypted_country_north_margin = cc.EvalSub(
+            load_ciphertext(payload["encrypted_country_north"]),
+            load_ciphertext(payload["encrypted_current_lat"]),
+        )
+        encrypted_country_south_margin = cc.EvalSub(
+            load_ciphertext(payload["encrypted_current_lat"]),
+            load_ciphertext(payload["encrypted_country_south"]),
+        )
+        encrypted_country_east_margin = cc.EvalSub(
+            load_ciphertext(payload["encrypted_country_east"]),
+            load_ciphertext(payload["encrypted_current_lon"]),
+        )
+        encrypted_country_west_margin = cc.EvalSub(
+            load_ciphertext(payload["encrypted_current_lon"]),
+            load_ciphertext(payload["encrypted_country_west"]),
+        )
 
         print("[Compliance] serializing results...", flush=True)
         return {

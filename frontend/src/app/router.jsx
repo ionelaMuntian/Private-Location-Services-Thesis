@@ -6,6 +6,7 @@ import PoiSearchPage from "../modules/poi-search/pages/PoiSearchPage";
 import LocationSharingPage from "../modules/location-sharing/pages/LocationSharingPage";
 import AdminDashboardPage from "../modules/company/pages/AdminDashboardPage";
 import AnomalyDetectionPage from "../modules/anomaly-detection/pages/AnomalyDetectionPage";
+import StatisticsPage from "../modules/statistics/pages/StatisticsPage";
 
 export function AppRouter() {
   return (
@@ -17,9 +18,7 @@ export function AppRouter() {
       <Route path="/location-sharing" element={<LocationSharingPage />} />
       <Route path="/admin-dashboard" element={<AdminDashboardPage />} />
       <Route path="/anomaly-detection" element={<AnomalyDetectionPage />} />
-
-      {/* Temporary until you implement the statistics page */}
-      <Route path="/statistics" element={<Navigate to="/poi-search" replace />} />
+      <Route path="/statistics" element={<StatisticsPage />} />
     </Routes>
   );
 }

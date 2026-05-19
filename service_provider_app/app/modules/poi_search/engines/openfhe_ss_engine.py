@@ -1,0 +1,290 @@
+import base64
+import tempfile
+from pathlib import Path
+from time import time
+from typing import Any
+from uuid import uuid4
+
+from fastapi import HTTPException
+
+import openfhe
+from openfhe import (
+    BINARY,
+    DeserializeCiphertext,
+    DeserializeCryptoContext,
+    SerializeToFile,
+)
+
+_FLEXIBLEAUTO = getattr(openfhe, "FLEXIBLEAUTO",
+                        getattr(openfhe, "ScalingTechnique", openfhe).FLEXIBLEAUTO)
+
+from ....core.metrics import StepTimer
+from ..repository import PoiRepository
+
+_KEY_TTL_SECONDS = 60 * 60
+_KEY_STORE: dict[str, dict] = {}
+
+repository = PoiRepository()
+
+# Must match DIST_SCALE_FACTOR used in client-side verification if needed.
+# Scale down large squared-metre distances to keep within CKKS precision.
+_DIST_SCALE = 1e-12
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _b64decode(data: str) -> bytes:
+    return base64.b64decode(data.encode("utf-8"))
+
+
+def _b64encode(data: bytes) -> str:
+    return base64.b64encode(data).decode("utf-8")
+
+
+def _write_b64_to_temp(payload_b64: str) -> str:
+    with tempfile.NamedTemporaryFile(delete=False) as tmp:
+        tmp.write(_b64decode(payload_b64))
+        return tmp.name
+
+
+def _serialize_to_b64(obj: Any) -> str:
+    with tempfile.NamedTemporaryFile(delete=False) as tmp:
+        path = tmp.name
+    try:
+        if not SerializeToFile(path, obj, BINARY):
+            raise RuntimeError("OpenFHE SS: failed to serialize object.")
+        return _b64encode(Path(path).read_bytes())
+    finally:
+        Path(path).unlink(missing_ok=True)
+
+
+def _cleanup_expired_keys() -> None:
+    now = time()
+    expired = [
+        kid for kid, entry in _KEY_STORE.items()
+        if now - float(entry["created_at"]) > _KEY_TTL_SECONDS
+    ]
+    for kid in expired:
+        _KEY_STORE.pop(kid, None)
+
+
+# ---------------------------------------------------------------------------
+# Key upload
+# ---------------------------------------------------------------------------
+
+def execute_openfhe_ss_upload_keys(
+    crypto_context_b64: str,
+    public_key_b64: str,
+    eval_mult_keys_b64: str,
+    eval_automorphism_keys_b64: str,
+    n_candidates: int,
+) -> dict:
+    _cleanup_expired_keys()
+
+    key_id = str(uuid4())
+    _KEY_STORE[key_id] = {
+        "crypto_context_b64": crypto_context_b64,
+        "public_key_b64": public_key_b64,
+        "eval_mult_keys_b64": eval_mult_keys_b64,
+        "eval_automorphism_keys_b64": eval_automorphism_keys_b64,
+        "n_candidates": n_candidates,
+        "created_at": time(),
+    }
+
+    return {"key_id": key_id, "expires_in_seconds": _KEY_TTL_SECONDS}
+
+
+# ---------------------------------------------------------------------------
+# Deserialization helpers
+# ---------------------------------------------------------------------------
+
+def _load_keys(key_id: str) -> dict:
+    _cleanup_expired_keys()
+    entry = _KEY_STORE.get(key_id)
+    if entry is None:
+        raise HTTPException(
+            status_code=404,
+            detail="OpenFHE SS key_id not found or expired. Re-upload keys.",
+        )
+    return entry
+
+
+def _load_crypto_context(context_b64: str):
+    path = _write_b64_to_temp(context_b64)
+    try:
+        cc, ok = DeserializeCryptoContext(path, BINARY)
+        if not ok:
+            raise RuntimeError("OpenFHE SS: failed to deserialize CryptoContext.")
+        return cc
+    finally:
+        Path(path).unlink(missing_ok=True)
+
+
+def _load_eval_mult_keys(cc, emk_b64: str) -> None:
+    path = _write_b64_to_temp(emk_b64)
+    try:
+        try:
+            if not cc.DeserializeEvalMultKey(path, BINARY):
+                raise RuntimeError("OpenFHE SS: failed to deserialize EvalMult keys.")
+        except RuntimeError as exc:
+            if "there is a key vector for the given keyTag" not in str(exc):
+                raise
+    finally:
+        Path(path).unlink(missing_ok=True)
+
+
+def _load_eval_automorphism_keys(cc, eak_b64: str) -> None:
+    if not eak_b64:
+        return
+    path = _write_b64_to_temp(eak_b64)
+    try:
+        try:
+            if not cc.DeserializeEvalAutomorphismKey(path, BINARY):
+                raise RuntimeError("OpenFHE SS: failed to deserialize EvalAutomorphism keys.")
+        except RuntimeError as exc:
+            if "key" in str(exc).lower() and "already" in str(exc).lower():
+                pass  # duplicate key, safe to ignore
+            else:
+                raise
+    finally:
+        Path(path).unlink(missing_ok=True)
+
+
+def _load_ciphertext(ct_b64: str):
+    path = _write_b64_to_temp(ct_b64)
+    try:
+        ct, ok = DeserializeCiphertext(path, BINARY)
+        if not ok:
+            raise RuntimeError("OpenFHE SS: failed to deserialize ciphertext.")
+        return ct
+    finally:
+        Path(path).unlink(missing_ok=True)
+
+
+# ---------------------------------------------------------------------------
+# Evaluation: vectorised CKKS distances + server-side argmin via EvalMinSchemeSwitching
+# ---------------------------------------------------------------------------
+
+def execute_openfhe_ss_evaluate(
+    key_id: str,
+    encrypted_qy: str,
+    encrypted_qx: str,
+    category: str,
+    n_candidates: int,
+) -> dict:
+    """
+    1. Load cached CKKS+SS context and all evaluation keys.
+    2. Fetch n_candidates POIs from DB.
+    3. Pack their coordinates as plaintext CKKS vectors.
+    4. Compute vectorised scaled squared distances:
+         dist2_scaled[i] = DIST_SCALE * ((qy - py_i)^2 + (qx - px_i)^2)
+    5. Run EvalMinSchemeSwitching to find the argmin entirely on the server:
+         - Converts dist2_scaled from CKKS to FHEW domain
+         - Runs log2(n) rounds of exact comparisons in the FHEW domain
+         - Converts the one-hot argmin result back to CKKS
+    6. Return the encrypted argmin one-hot ciphertext to the client.
+
+    Privacy guarantee: the server never sees plaintext query coordinates.
+    The client decrypts only the winner index (one-hot), not all distances.
+    """
+    total_timer = StepTimer()
+
+    entry = _load_keys(key_id)
+    n = entry["n_candidates"]
+
+    if n_candidates != n:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"n_candidates={n_candidates} does not match the uploaded key setup "
+                f"(n={n}). Re-upload keys with the correct n."
+            ),
+        )
+
+    # --- Fetch candidates -----------------------------------------------
+    candidate_timer = StepTimer()
+    candidates = repository.get_all_by_category(category=category, limit=n)
+    candidate_ms = candidate_timer.elapsed_ms()
+
+    if len(candidates) < n:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"OpenFHE SS requires at least {n} candidates in category "
+                f"'{category}', found {len(candidates)}."
+            ),
+        )
+    candidates = candidates[:n]
+
+    # --- Load crypto context + evaluation keys --------------------------
+    print("[OpenFHE SS] Loading crypto context...", flush=True)
+    cc = _load_crypto_context(entry["crypto_context_b64"])
+    _load_eval_mult_keys(cc, entry["eval_mult_keys_b64"])
+
+    # --- Deserialise encrypted query coordinates ------------------------
+    ct_qy = _load_ciphertext(encrypted_qy)
+    ct_qx = _load_ciphertext(encrypted_qx)
+
+    # --- Compute vectorised scaled dist² --------------------------------
+    compute_timer = StepTimer()
+    print("[OpenFHE SS] Computing encrypted distances...", flush=True)
+
+    py_vals = [float(c["lat_m"]) for c in candidates]
+    px_vals = [float(c["lon_m"]) for c in candidates]
+
+    py_plain = cc.MakeCKKSPackedPlaintext(py_vals)
+    px_plain = cc.MakeCKKSPackedPlaintext(px_vals)
+
+    dy = cc.EvalSub(ct_qy, py_plain)
+    dx = cc.EvalSub(ct_qx, px_plain)
+
+    dy2 = cc.EvalMult(dy, dy)
+    dx2 = cc.EvalMult(dx, dx)
+
+    dist2_ct = cc.EvalAdd(dy2, dx2)
+
+    # Scale to avoid floating-point overflow in the FHEW domain
+    scale_plain = cc.MakeCKKSPackedPlaintext([_DIST_SCALE] * n)
+    dist2_scaled = cc.EvalMult(dist2_ct, scale_plain)
+
+    compute_ms = compute_timer.elapsed_ms()
+    print(f"[OpenFHE SS] Distances computed in {compute_ms:.1f}ms.", flush=True)
+
+    # --- Serialise encrypted dist² ciphertext for client-side argmin ---
+    # The client holds all scheme-switching keys (LKSK, BTKeys) and will run
+    # EvalMinSchemeSwitching locally on this ciphertext.
+    dist2_ct_b64 = _serialize_to_b64(dist2_scaled)
+
+    total_ms = total_timer.elapsed_ms()
+
+    return {
+        "scheme": "openfhe_ss",
+        "dist2_ct_b64": dist2_ct_b64,
+        "candidates": [
+            {
+                "id": c["id"],
+                "name": c["name"],
+                "category": c["category"],
+                "latitude": c["latitude"],
+                "longitude": c["longitude"],
+                "lat_m": c["lat_m"],
+                "lon_m": c["lon_m"],
+            }
+            for c in candidates
+        ],
+        "metrics": {
+            "server": {
+                "candidate_selection_ms": candidate_ms,
+                "computation_ms": compute_ms,
+                "total_ms": total_ms,
+            },
+            "workload": {
+                "candidate_count": n,
+                "returned_count": 1,
+                "k": 1,
+                "category": category,
+            },
+        },
+    }

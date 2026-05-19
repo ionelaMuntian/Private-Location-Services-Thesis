@@ -65,17 +65,14 @@ def _deserialize_ciphertext(ciphertext_b64: str):
 
 
 def _try_set_multiparty_noise_mode(parameters) -> None:
-    # CKKSRNS multiparty: each party adds smudging noise during partial decryption.
-    # NOISE_FLOODING_DECRYPT relaxes the approximation-error check in Decode() to
-    # accept this intentionally large smudging noise.
-    # SetMultipartyMode is BFV/BGV only and throws for CKKSRNS.
-    # NOISE_FLOODING_DECRYPT requires SetNoiseEstimate (expected pre-flooding noise σ).
-    try:
-        parameters.SetDecryptionNoiseMode(DecryptionNoiseMode.NOISE_FLOODING_DECRYPT)
-        parameters.SetNoiseEstimate(8.0)
-        print("[OpenFHE] NOISE_FLOODING_DECRYPT + NoiseEstimate=8.0 set.", flush=True)
-    except Exception as exc:
-        print(f"[OpenFHE] WARNING: could not set DecryptionNoiseMode: {exc}", flush=True)
+    # NOISE_FLOODING_DECRYPT adds smudging noise during partial decryption for
+    # formal security proofs. It requires NoiseEstimate to be calibrated to the
+    # circuit depth; our distance circuit's 3×EvalMult produces a level-reduced
+    # ciphertext whose post-flooding imaginary component exceeds any fixed estimate,
+    # causing Decode() to fail. Omitting the mode still gives a correct two-party
+    # decryption — only the intermediate partial decryptions lose their smudging
+    # security guarantee, which is acceptable for this thesis demonstration.
+    pass
 
 
 class OpenFHEMultipartyRuntime:
