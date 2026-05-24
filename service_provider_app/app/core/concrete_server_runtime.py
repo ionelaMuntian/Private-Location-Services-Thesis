@@ -6,7 +6,7 @@ from pathlib import Path
 
 from concrete import fhe
 
-SUPPORTED_N = [1, 2, 5, 10, 20]
+SUPPORTED_N = [1, 5, 12, 13, 14, 15]
 
 
 def _b64decode(data: str) -> bytes:

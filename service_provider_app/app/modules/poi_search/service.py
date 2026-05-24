@@ -16,7 +16,6 @@ from .schemas import (
     ServiceProviderNearestKRequest,
 )
 from .scenarios.nearest_k import execute_nearest_k
-from .scenarios.search_by_name import execute_search_by_name
 
 
 class PoiSearchServiceProviderService:
@@ -57,5 +56,3 @@ class PoiSearchServiceProviderService:
         count = self.repository.count_by_category(category)
         return {"category": category, "count": count}
 
-    def search_by_name(self, query: str, limit: int = 10) -> dict:
-        return execute_search_by_name(query=query, limit=limit)

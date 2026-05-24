@@ -1,7 +1,25 @@
 # client_app/app/modules/poi_search/scenarios/nearest_k.py
 
 import base64
+import math
 from typing import cast
+
+# Must match the reference subtracted from poi.csv lat_m / lon_m columns.
+_LAT_REF_M = 5_891_000.0
+_LON_REF_M = 2_617_000.0
+
+
+def _degrees_to_meters(lat_deg: float, lon_deg: float) -> tuple[float, float]:
+    """WGS-84 degrees → full EPSG:3857 meters (unshifted)."""
+    lon_m = lon_deg * 20_037_508.34 / 180.0
+    lat_m = math.log(math.tan(math.pi / 4.0 + math.radians(lat_deg) / 2.0)) * (20_037_508.34 / math.pi)
+    return lat_m, lon_m
+
+
+def _degrees_to_shifted_meters(lat_deg: float, lon_deg: float) -> tuple[float, float]:
+    """WGS-84 degrees → EPSG:3857 meters, then subtract the dataset origin."""
+    lat_m, lon_m = _degrees_to_meters(lat_deg, lon_deg)
+    return lat_m - _LAT_REF_M, lon_m - _LON_REF_M
 
 from fastapi import HTTPException
 
@@ -82,6 +100,12 @@ async def _execute_single_scheme(request: NearestKClientRequest) -> dict:
             detail="Internal error: _execute_single_scheme cannot run scheme='all'.",
         )
 
+    # Plaintext sends full EPSG:3857 coords to PostGIS; FHE schemes use
+    # shifted coords (reference subtracted) to keep values small for FHE.
+    lat_m_full, lon_m_full = _degrees_to_meters(request.latitude, request.longitude)
+    lat_m = lat_m_full - _LAT_REF_M
+    lon_m = lon_m_full - _LON_REF_M
+
     adapter = get_client_adapter(request.scheme)
     total_timer = StepTimer()
 
@@ -100,8 +124,8 @@ async def _execute_single_scheme(request: NearestKClientRequest) -> dict:
 
         prepare_timer = StepTimer()
         prepared = adapter.prepare_query(
-            latitude=request.latitude_m,
-            longitude=request.longitude_m,
+            latitude=lat_m,
+            longitude=lon_m,
             k=request.k,
         )
         n_candidates = prepared["encrypted_query"]["metadata"]["n_candidates"]  # N_SS=128
@@ -216,8 +240,8 @@ async def _execute_single_scheme(request: NearestKClientRequest) -> dict:
 
         prepare_timer = StepTimer()
         prepared = adapter.prepare_query(
-            latitude=request.latitude_m,
-            longitude=request.longitude_m,
+            latitude=lat_m,
+            longitude=lon_m,
             k=request.k,
             n=n_candidates,
         )
@@ -348,8 +372,8 @@ async def _execute_single_scheme(request: NearestKClientRequest) -> dict:
 
     prepare_timer = StepTimer()
     prepared = adapter.prepare_query(
-        latitude=request.latitude_m,
-        longitude=request.longitude_m,
+        latitude=lat_m_full if request.scheme == "plaintext" else lat_m,
+        longitude=lon_m_full if request.scheme == "plaintext" else lon_m,
         k=request.k,
     )
     prepare_query_ms = prepare_timer.elapsed_ms()
@@ -422,8 +446,8 @@ async def execute_nearest_k(request: NearestKClientRequest) -> dict:
         scheme_request = NearestKClientRequest(
             category=request.category,
             k=request.k,
-            latitude_m=request.latitude_m,
-            longitude_m=request.longitude_m,
+            latitude=request.latitude,
+            longitude=request.longitude,
             scheme=cast(str, scheme),
         )
 

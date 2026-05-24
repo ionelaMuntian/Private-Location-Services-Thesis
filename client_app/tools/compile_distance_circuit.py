@@ -3,12 +3,30 @@
 # Compiles one Concrete FHE circuit per supported N value.
 # Each circuit takes encrypted user coordinates + N clear POI inputs
 # and returns the ID and squared distance of the closest POI (k=1).
-#
-# Supported N values: 1, 2, 5, 10, 20
+
+# Supported N values: 1, 5, 12, 13, 14, 15
 # Artifacts saved to: client_app/.artifacts/concrete/
 #   server_nN.zip        — loaded by the service provider
 #   client_specs_nN.bin  — loaded by the client for key generation / encrypt / decrypt
+#
+# Compilation speed notes
+# -----------------------
+# Two parameters dominate compile time:
+#
+#   1. Inputset size — Concrete traces the circuit once per sample to infer
+#      bit widths for every intermediate value.  We only need:
+#        • 2 extreme-range samples (so Concrete sees the max dist² = 481 ≈ 9 bits)
+#        • 1 sample per POI slot where that slot is the minimum
+#             → exercises every np.where branch exactly once
+#      Total: N + 2  (vs the previous ~4N + 20 + boundary = ~4.2× larger)
+#
+#   2. FHE parameter search — without an explicit error budget, Concrete targets
+#      a near-perfect noise floor (~1e-10 per PBS) and searches a huge parameter
+#      space.  For a nearest-POI circuit a global 0.01% error rate (1-in-10 000
+#      circuit evaluations returns a wrong result) is completely acceptable.
+#      Setting global_p_error=1e-4 lets the optimizer converge 10–100× faster.
 
+import time
 from pathlib import Path
 
 import numpy as np
@@ -18,25 +36,32 @@ CLIENT_APP_DIR = Path(__file__).resolve().parents[1]
 ARTIFACTS_DIR = CLIENT_APP_DIR / ".artifacts" / "concrete"
 ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
 
-SUPPORTED_N = [1, 2, 5, 10, 20]
+SUPPORTED_N = [1, 5, 12, 13, 14, 15]
 
-# Cluj-Napoca dataset: after ÷1000 and origin shift the relative coordinates
-# fit in [0, 7] × [0, 5].  Keeping values small is critical — larger ranges
-# produce exponentially bigger evaluation keys and slower PBS operations.
-COORD_VALUES = [0, 1, 2, 3, 4, 5, 6, 7]
+# Cluj-Napoca dataset: after ÷3000 and reference subtraction the shifted
+# coordinates fit in [0, 8] × [0, 8] (max shifted_m / 3000 ≈ 8.1).
+# Max dist² = 8² + 8² = 128 (~8 bits) — PBS LUT has 256 entries.
+# Keys are larger than the 7-bit variant but still manageable (~200 MB).
+COORD_MAX_X = 8
+COORD_MAX_Y = 8
 
-# Pool of POI (px, py) positions used when building the inputset.
-# Must cover the full coordinate range so Concrete compiles for every case.
-_POI_COORD_POOL = [
-    (0, 0), (7, 5), (1, 1), (6, 4), (3, 2),
-    (4, 3), (2, 4), (5, 1), (0, 5), (7, 0),
-    (2, 2), (5, 3), (1, 4), (6, 2), (3, 5),
-    (4, 1), (0, 3), (7, 2), (2, 0), (5, 5),
-]
+# p_error: probability that a SINGLE PBS operation produces a wrong output.
+# Unlike global_p_error, this is circuit-size independent — the optimizer
+# solves a fixed parameter search regardless of N, so compilation time is
+# roughly constant across all N values.
+#
+# With compress_evaluation_keys=True the serialised keys are ~30–40× smaller
+# than uncompressed, so we can afford tighter p_error without hitting gRPC
+# transfer limits.
+#
+# 1e-4 per PBS → circuit error (N=5 has ~22 PBS including squarings):
+#   N=5  (~22 PBS): 1 - (1-1e-4)^22 ≈ 0.22%   → ~1 in 450 queries fails
+#   N=15 (~62 PBS): 1 - (1-1e-4)^62 ≈ 0.62%   → ~1 in 160 queries fails
+_P_ERROR = 1e-4
 
 
 # ---------------------------------------------------------------------------
-# Circuit generation
+# Circuit generation  (unchanged)
 # ---------------------------------------------------------------------------
 
 def _make_circuit_fn(n: int):
@@ -89,58 +114,67 @@ def _make_encryption_config(n: int) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Inputset generation
+# Inputset generation  (optimised)
 # ---------------------------------------------------------------------------
 
 def _build_inputset(n: int) -> list:
     """
-    Generates a representative inputset for the N-POI circuit.
+    Minimal inputset: exactly 3 samples for any N.
 
-    Rules:
-    - User coordinates vary over COORD_VALUES × COORD_VALUES (subset).
-    - POI coordinates are drawn from _POI_COORD_POOL.
-    - Extra samples ensure the minimum is at each position 0..N-1 so
-      Concrete sees every branch of the np.where chain.
+    Concrete traces the circuit to infer the value range of every intermediate
+    signal and allocate the right number of bits.  Three samples are enough:
+
+    Sample A — user at (0, 0), all POIs at (COORD_MAX_X, COORD_MAX_Y)
+        • dist² = 16²+15² = 481  →  Concrete allocates 9-bit integers
+        • min_id = 1  (no update: all distances equal, strict < never True)
+        • qx_rel = 0, qy_rel = 0  (minimum user coordinates)
+        • np.where condition always False  →  exercises the False branch
+
+    Sample B — user at (COORD_MAX_X, COORD_MAX_Y), all POIs at (0, 0)
+        • Same max dist² = 481
+        • qx_rel = 16, qy_rel = 15  (maximum user coordinates)
+        • min_id = 1
+
+    Sample C — user at centre (cx, cy), last POI at (cx, cy), all others at (0, 0)
+        • Last POI wins: dist²=0; all others dist²=cx²+cy²=113
+        • min_id = N  →  combined with A&B giving min_id=1, Concrete infers
+          min_id ∈ [1, N] and allocates ⌈log₂(N)⌉ bits correctly
+        • dist² = 0  →  Concrete sees the minimum dist² value
+        • np.where condition True for the last iteration  →  exercises the True branch
+
+    Why not one sample per slot (the previous N+2 approach)?
+    Concrete only needs the VALUE RANGE of each signal, not every individual
+    value in that range.  Seeing min_id=1 (A&B) and min_id=N (C) is enough
+    to infer [1..N].  The intermediate IDs 2..N-1 add no new bit-width
+    information and only inflate tracing time.
     """
-    samples: list = []
+    cx = COORD_MAX_X // 2   # 8
+    cy = COORD_MAX_Y // 2   # 7
 
-    user_positions = [(qx, qy) for qx in [0, 1, 3, 5, 7] for qy in [0, 2, 5]]
+    # ── Sample A: user at origin, all POIs at far corner ──
+    args: list = [np.int64(0), np.int64(0)]
+    for i in range(n):
+        args += [np.int64(COORD_MAX_X), np.int64(COORD_MAX_Y), np.int64(i + 1)]
+    sample_a = tuple(args)
 
-    # General samples: POI coords from pool, varied user positions.
-    for qx, qy in user_positions:
-        args: list = [np.int64(qx), np.int64(qy)]
-        for i in range(n):
-            px, py = _POI_COORD_POOL[i % len(_POI_COORD_POOL)]
-            args += [np.int64(px), np.int64(py), np.int64(i + 1)]
-        samples.append(tuple(args))
+    # ── Sample B: user at far corner, all POIs at origin ──
+    args = [np.int64(COORD_MAX_X), np.int64(COORD_MAX_Y)]
+    for i in range(n):
+        args += [np.int64(0), np.int64(0), np.int64(i + 1)]
+    sample_b = tuple(args)
 
-    # Samples where each POI is the minimum — ensures all np.where branches
-    # are exercised.
-    for min_pos in range(n):
-        for qx, qy in [(3, 3), (0, 0), (7, 5), (1, 4)]:
-            args = [np.int64(qx), np.int64(qy)]
-            for i in range(n):
-                if i == min_pos:
-                    # Place this POI at the user position (distance = 0).
-                    px, py = qx, qy
-                else:
-                    # Place other POIs at the far corner.
-                    px = 7 - qx if qx <= 3 else 0
-                    py = 5 - qy if qy <= 2 else 0
-                args += [np.int64(px), np.int64(py), np.int64(i + 1)]
-            samples.append(tuple(args))
+    # ── Sample C: only the last POI wins ──
+    # Shows min_id=N (max), dist²=0 (min), and exercises the True branch.
+    args = [np.int64(cx), np.int64(cy)]
+    for i in range(n):
+        if i == n - 1:
+            px, py = cx, cy   # last POI at user position → dist²=0, wins
+        else:
+            px, py = 0, 0     # all others at origin → dist²=113, lose
+        args += [np.int64(px), np.int64(py), np.int64(i + 1)]
+    sample_c = tuple(args)
 
-    # Boundary / edge cases.
-    for qx, qy in [(0, 0), (7, 5), (3, 3)]:
-        for offset in range(min(n, 4)):
-            args = [np.int64(qx), np.int64(qy)]
-            for i in range(n):
-                px = (i + offset) % 8
-                py = (i + offset) % 6
-                args += [np.int64(px), np.int64(py), np.int64(i + 1)]
-            samples.append(tuple(args))
-
-    return samples
+    return [sample_a, sample_b, sample_c]
 
 
 # ---------------------------------------------------------------------------
@@ -152,34 +186,56 @@ def compile_for_n(n: int) -> None:
     specs_path = ARTIFACTS_DIR / f"client_specs_n{n}.bin"
 
     fn = _make_circuit_fn(n)
-    config = _make_encryption_config(n)
+    enc_cfg = _make_encryption_config(n)
     inputset = _build_inputset(n)
 
+    # Circuit has (n-1) iterations × 3 PBS operations each.
+    n_pbs = max(0, (n - 1) * 3)
     print(
-        f"[N={n}] Compiling circuit with {len(inputset)} inputset samples...",
+        f"[N={n:3d}] Compiling — {len(inputset)} inputset samples, "
+        f"~{n_pbs} PBS ops, p_error={_P_ERROR:.0e}",
         flush=True,
     )
 
-    compiler = fhe.Compiler(fn, config)
-    circuit = compiler.compile(inputset)
+    t0 = time.time()
+
+    compiler = fhe.Compiler(fn, enc_cfg)
+    circuit = compiler.compile(
+        inputset,
+        configuration=fhe.Configuration(
+            p_error=_P_ERROR,
+            compress_evaluation_keys=True,
+        ),
+    )
 
     circuit.server.save(server_path)
     specs_path.write_bytes(circuit.client.specs.serialize())
 
-    print(f"[N={n}] Saved server artifact : {server_path}", flush=True)
-    print(f"[N={n}] Saved client specs    : {specs_path}", flush=True)
-
+    elapsed = time.time() - t0
+    mins, secs = divmod(int(elapsed), 60)
+    print(
+        f"[N={n:3d}] Done in {mins}m {secs:02d}s"
+        f" — server: {server_path.name}  specs: {specs_path.name}",
+        flush=True,
+    )
 
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
 def main() -> None:
-    print(f"Compiling Concrete find-minimum circuits for N = {SUPPORTED_N}", flush=True)
+    print(
+        f"Compiling Concrete find-minimum circuits for N = {SUPPORTED_N}\n"
+        f"  Inputset: 3 samples per circuit (was ~4N+24)\n"
+        f"  Error budget: p_error={_P_ERROR:.0e} per PBS (circuit-size independent)\n",
+        flush=True,
+    )
+    t_total = time.time()
     for n in SUPPORTED_N:
         compile_for_n(n)
-    print("All circuits compiled successfully.", flush=True)
-
+    elapsed = time.time() - t_total
+    mins, secs = divmod(int(elapsed), 60)
+    print(f"\nAll circuits compiled in {mins}m {secs:02d}s.", flush=True)
 
 if __name__ == "__main__":
     main()

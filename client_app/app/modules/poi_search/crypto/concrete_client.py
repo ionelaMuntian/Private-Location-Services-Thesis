@@ -11,16 +11,17 @@ from .quantization import (
     quantize_metric_coordinate,
 )
 
-# Coarse quantization keeps relative coordinates small, which is critical for
-# keeping Concrete evaluation key sizes and PBS latency manageable.
-quant_config = QuantizationConfig(scale_divisor=1000)
+# 3 km quantization — keeps dist² ≤ 128 (8-bit PBS, LUT=256 entries).
+quant_config = QuantizationConfig(scale_divisor=3000)
 
-# Local origin after quantization for the Cluj-Napoca dataset.
-# Actual data ranges (÷1000):
-#   lon_m_q: 2619..2626  →  relative X: 0..7
-#   lat_m_q: 5899..5904  →  relative Y: 0..5
-ORIGIN_X_Q = 2619
-ORIGIN_Y_Q = 5899
+# Reference subtracted from full EPSG:3857 POI coordinates to keep
+# quantized values small (0–8 range) for the FHE circuit.
+# Must match _LAT_REF_M / _LON_REF_M in nearest_k.py.
+_LAT_REF_M = 5_891_000.0
+_LON_REF_M = 2_617_000.0
+
+ORIGIN_X_Q = 0
+ORIGIN_Y_Q = 0
 
 
 class ConcreteClientAdapter(ClientCryptoAdapter):
@@ -39,7 +40,7 @@ class ConcreteClientAdapter(ClientCryptoAdapter):
 
         Args:
             n: Number of POI candidates the circuit will process.
-               Must be one of SUPPORTED_N = {1, 2, 5, 10, 20}.
+               Must be one of SUPPORTED_N = {1, 5, 12, 13, 14, 15}.
 
         The client encrypts only the user coordinates.
         Concrete always returns k=1 (the single closest POI).
@@ -176,11 +177,12 @@ class ConcreteClientAdapter(ClientCryptoAdapter):
         internal_id = int(best["id"])
         dist2_quantized = int(best["dist2"])
 
+        n = local_state.get("n_candidates", "?")
         candidate = candidate_by_internal_id.get(internal_id)
         if candidate is None:
             raise ValueError(
-                f"Decrypted internal POI id {internal_id} not found in "
-                "candidate_by_internal_id."
+                f"Concrete PBS noise error: decrypted id={internal_id} is outside "
+                f"valid range [1..{n}]. Recompile with a lower p_error."
             )
 
         distance_km = dequantize_squared_distance_to_km(dist2_quantized, quant_config)

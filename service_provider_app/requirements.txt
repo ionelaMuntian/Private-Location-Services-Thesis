@@ -10,3 +10,5 @@ openfhe
 grpcio
 grpcio-tools
 protobuf
+scikit-learn
+joblib

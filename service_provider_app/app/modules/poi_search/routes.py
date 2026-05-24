@@ -1,5 +1,5 @@
 # service_provider_app/app/modules/poi_search/routes.py
-from fastapi import APIRouter, Query
+from fastapi import APIRouter
 
 from .schemas import (
     CategoryListResponse,
@@ -11,7 +11,6 @@ from .schemas import (
     OpenFHESSEvaluateResponse,
     OpenFHESSUploadKeysRequest,
     OpenFHESSUploadKeysResponse,
-    PoiNameSearchResponse,
     ServiceProviderNearestKRequest,
     ServiceProviderNearestKResponse,
 )
@@ -50,10 +49,3 @@ def openfhe_ss_upload_keys(request: OpenFHESSUploadKeysRequest):
 def openfhe_ss_evaluate(request: OpenFHESSEvaluateRequest):
     return service.openfhe_ss_evaluate(request)
 
-
-@router.get("/search-by-name", response_model=PoiNameSearchResponse)
-def search_by_name(
-    q: str = Query(..., min_length=1),
-    limit: int = Query(10, ge=1, le=50),
-):
-    return service.search_by_name(query=q, limit=limit)

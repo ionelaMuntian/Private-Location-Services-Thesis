@@ -48,16 +48,10 @@ class MetricsEnvelope(BaseModel):
 class NearestKClientRequest(BaseModel):
     category: str = Field(..., examples=["bank", "cafe", "supermarket"])
     k: int = Field(..., gt=0, le=200)
-    latitude_m: float = Field(
-        ...,
-        description="Projected metric latitude-like coordinate (EPSG:3857 Y)",
-    )
-    longitude_m: float = Field(
-        ...,
-        description="Projected metric longitude-like coordinate (EPSG:3857 X)",
-    )
+    latitude: float = Field(..., description="WGS-84 latitude in decimal degrees")
+    longitude: float = Field(..., description="WGS-84 longitude in decimal degrees")
     scheme: SchemeType = "plaintext"
-    n_candidates: int | None = Field(None, ge=1, le=20)
+    n_candidates: int | None = Field(None, ge=1, le=122)
 
 
 class PoiItem(BaseModel):
@@ -94,20 +88,6 @@ class AllSchemesComparisonResponse(BaseModel):
 
 class CategoryListResponse(BaseModel):
     categories: List[str]
-
-
-class PoiNameSearchItem(BaseModel):
-    id: int
-    name: str
-    category: str
-    latitude: float
-    longitude: float
-
-
-class PoiNameSearchResponse(BaseModel):
-    query: str
-    count: int
-    results: List[PoiNameSearchItem]
 
 
 NearestKResponseType = Union[

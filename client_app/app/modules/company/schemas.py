@@ -37,7 +37,6 @@ class CompanyResponse(BaseModel):
     country_east_m: float | None = None
     country_west_m: float | None = None
 
-
 class AdminCompaniesResponse(BaseModel):
     companies: List[CompanyResponse]
 
@@ -53,7 +52,6 @@ class JoinCompanyRequest(BaseModel):
 class AddEmployeeRequest(BaseModel):
     company_id: int
     user_id: int
-
 
 class SaveLatestLocationRequest(BaseModel):
     company_id: int
@@ -96,7 +94,6 @@ class UserLocationStatusItem(BaseModel):
     plaintext_at_home: bool | None = None
     plaintext_at_office: bool | None = None
     last_updated: str | None = None
-
 
 class CompanyUsersStatusResponse(BaseModel):
     company_id: int

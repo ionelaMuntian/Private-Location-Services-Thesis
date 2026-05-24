@@ -77,6 +77,20 @@ services:
       - db_users
       - db_company
 
+  jupyter_training:
+    build:
+      context: .
+      dockerfile: notebooks/Dockerfile
+    container_name: thesis_jupyter
+    ports:
+      - "8888:8888"
+    volumes:
+      - ./database/anomaly-detection-dataset:/dataset:ro
+      - ./notebooks:/notebooks
+      - ./service_provider_app/app/modules/anomaly_detection/models:/models
+    profiles:
+      - training
+
 volumes:
   thesis_db_data:
   thesis_auth_db_data:

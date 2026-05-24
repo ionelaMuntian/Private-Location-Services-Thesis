@@ -193,19 +193,6 @@ class CategoryListResponse(BaseModel):
     categories: List[str]
 
 
-class PoiNameSearchItem(BaseModel):
-    id: int
-    name: str
-    category: str
-    latitude: float
-    longitude: float
-
-
-class PoiNameSearchResponse(BaseModel):
-    query: str
-    count: int
-    results: List[PoiNameSearchItem]
-
 
 # ---------------------------------------------------------------------------
 # OpenFHE Scheme-Switching schemas

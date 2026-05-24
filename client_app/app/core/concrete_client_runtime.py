@@ -9,7 +9,7 @@ from concrete import fhe
 CLIENT_APP_DIR = Path(__file__).resolve().parents[2]
 ARTIFACTS_DIR = CLIENT_APP_DIR / ".artifacts" / "concrete"
 
-SUPPORTED_N = [1, 2, 5, 10, 20]
+SUPPORTED_N = [1, 5, 12, 13, 14, 15]
 
 
 def _b64encode(data: bytes) -> str:

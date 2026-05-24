@@ -95,22 +95,6 @@ class ServiceProviderGatewayServicer(
                 result = poi_service.category_count(category=category_values[0])
                 return _json_response(200, result)
 
-            if method == "GET" and clean_path == "/service/poi/search-by-name":
-                q_values = query_params.get("q", [])
-                limit_values = query_params.get("limit", ["10"])
-
-                if not q_values:
-                    return _json_response(
-                        422,
-                        {"detail": "Missing required query parameter: q"},
-                    )
-
-                q = q_values[0]
-                limit = int(limit_values[0])
-
-                result = poi_service.search_by_name(query=q, limit=limit)
-                return _json_response(200, result)
-
             if method == "POST" and clean_path == "/service/company/compliance/evaluate":
                 dto = ComplianceEvaluationRequest(**payload)
                 result = company_service.evaluate_compliance(dto)

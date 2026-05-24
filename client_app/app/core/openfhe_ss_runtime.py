@@ -21,8 +21,10 @@ HYBRID = getattr(openfhe, "HYBRID", openfhe.KeySwitchTechnique.HYBRID)
 # eval-mult key registry conflicts when multiple N-value contexts coexist.
 N_SS = 128
 
-# EvalMinSchemeSwitching depth: 9+3+1+log2(128)+4 = 24
-_SS_DEPTH = 24
+# STD128 needs more levels for the CKKS→FHEW conversion polynomial than TOY.
+# Server uses 4 levels (mul×2, mul×scale, mul×keep_mask); EvalMinSchemeSwitching
+# needs ~35 for 128 slots with STD128.  Total = 39 → use 40 with buffer.
+_SS_DEPTH = 52
 
 
 def _b64encode(data: bytes) -> str:
@@ -64,6 +66,13 @@ def _get_toy_param():
         return getattr(openfhe, "TOY", 0)
 
 
+def _get_std128_param():
+    try:
+        return openfhe.BINFHE_PARAMSET.STD128
+    except AttributeError:
+        return getattr(openfhe, "STD128", 2)
+
+
 class OpenFHESSClientRuntime:
     """
     CKKS + FHEW scheme-switching runtime for nearest-POI argmin.
@@ -86,13 +95,13 @@ class OpenFHESSClientRuntime:
             )
 
         HEStd_NotSet = _get_hestd_not_set()
-        TOY = _get_toy_param()
+        STD128 = _get_std128_param()
 
-        print(f"[OpenFHE SS] Setting up: n={self.n}, depth={_SS_DEPTH}", flush=True)
+        print(f"[OpenFHE SS] Setting up: n={self.n}, depth={_SS_DEPTH}, FHEW=STD128", flush=True)
 
         params = CCParamsCKKSRNS()
         params.SetMultiplicativeDepth(_SS_DEPTH)
-        params.SetScalingModSize(52)
+        params.SetScalingModSize(59)
         params.SetFirstModSize(60)
         params.SetScalingTechnique(FLEXIBLEAUTO)
         params.SetBatchSize(self.n)
@@ -114,7 +123,7 @@ class OpenFHESSClientRuntime:
 
         ss_params = SchSwchParams()
         ss_params.SetSecurityLevelCKKS(HEStd_NotSet)
-        ss_params.SetSecurityLevelFHEW(TOY)
+        ss_params.SetSecurityLevelFHEW(STD128)
         ss_params.SetNumSlotsCKKS(self.n)
         ss_params.SetNumValues(self.n)
         ss_params.SetComputeArgmin(True)

@@ -4,20 +4,15 @@ import axios from "axios";
 import "../styles/poi-search.css";
 
 const API_URL = "http://127.0.0.1:8000/client/poi/nearest-k";
-const SEARCH_BY_NAME_URL = "http://127.0.0.1:8000/client/poi/search-by-name";
 
-//  minutes — Concrete FHE evaluation can be slow.
 const REQUEST_TIMEOUT_MS = 1800000;
 
 const initialForm = {
-  searchType: "category",
   category: "hospital",
-  nameQuery: "",
   k: 2,
-  latitude_m: 5902000.0,
-  longitude_m: 2622000.0,
+  latitude: 46.77,
+  longitude: 23.59,
   scheme: "plaintext",
-  n_candidates: 10,
 };
 
 function formatMs(value) {
@@ -65,7 +60,7 @@ function SimpleMetrics({ metrics, scheme }) {
   );
 }
 
-function ResultsTable({ results, showDistance = true }) {
+function ResultsTable({ results }) {
   if (!results || results.length === 0) {
     return <p className="poi-empty">No results available.</p>;
   }
@@ -79,7 +74,7 @@ function ResultsTable({ results, showDistance = true }) {
             <th>Category</th>
             <th>Latitude</th>
             <th>Longitude</th>
-            {showDistance && <th>Distance (km)</th>}
+            <th>Distance (km)</th>
           </tr>
         </thead>
         <tbody>
@@ -89,7 +84,7 @@ function ResultsTable({ results, showDistance = true }) {
               <td>{poi.category}</td>
               <td>{poi.latitude}</td>
               <td>{poi.longitude}</td>
-              {showDistance && <td>{poi.distance_km}</td>}
+              <td>{poi.distance_km}</td>
             </tr>
           ))}
         </tbody>
@@ -134,7 +129,7 @@ function AllRunsComparison({ runs }) {
             <div className="poi-subsection-header">
               <h4>Results for {run.scheme}</h4>
             </div>
-            <ResultsTable results={run.results} showDistance={true} />
+            <ResultsTable results={run.results} />
           </div>
         ))}
       </div>
@@ -163,8 +158,6 @@ export default function PoiSearchPage() {
 
   const hasResults = useMemo(() => results.length > 0, [results]);
   const hasAllRuns = useMemo(() => allRuns.length > 0, [allRuns]);
-  const isNameSearch = form.searchType === "name";
-  const shouldShowDistance = !isNameSearch && selectedScheme !== "name-search";
 
   const handleChange = (field, value) => {
     setForm((prev) => ({
@@ -202,40 +195,12 @@ export default function PoiSearchPage() {
     resetResponseState();
 
     try {
-      if (form.searchType === "name") {
-        if (!form.nameQuery.trim()) {
-          setError("Please enter a POI name.");
-          setLoading(false);
-          return;
-        }
-
-        const response = await axios.get(SEARCH_BY_NAME_URL, {
-          params: {
-            q: form.nameQuery.trim(),
-            limit: Number(form.k),
-          },
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-          timeout: REQUEST_TIMEOUT_MS,
-        });
-
-        const data = response.data;
-
-        setMode("single");
-        setSelectedScheme("name-search");
-        setResponseMetrics(null);
-        setResults(data.results || []);
-        return;
-      }
-
       const payload = {
         category: form.category,
         k: Number(form.k),
-        latitude_m: Number(form.latitude_m),
-        longitude_m: Number(form.longitude_m),
+        latitude: Number(form.latitude),
+        longitude: Number(form.longitude),
         scheme: form.scheme,
-        n_candidates: Number(form.n_candidates),
       };
 
       const response = await axios.post(API_URL, payload, {
@@ -336,8 +301,8 @@ export default function PoiSearchPage() {
                 <p className="poi-eyebrow">Nearest Points of Interest</p>
                 <h1>Search Nearby Services</h1>
                 <p className="poi-subtitle">
-                  Search POIs either by category with privacy-preserving distance
-                  computation, or by name using direct lookup.
+                  Search for the nearest POIs by category using privacy-preserving
+                  distance computation.
                 </p>
               </div>
             </header>
@@ -346,63 +311,27 @@ export default function PoiSearchPage() {
               <section className="poi-card poi-form-card">
                 <div className="poi-card-header">
                   <h3>Query Form</h3>
-                  <p>Choose a search type and enter the query parameters below.</p>
-                </div>
-
-                <div className="poi-search-type-switch">
-                  <button
-                    type="button"
-                    className={`poi-search-type-btn ${
-                      form.searchType === "category" ? "active" : ""
-                    }`}
-                    onClick={() => handleChange("searchType", "category")}
-                  >
-                    By Category
-                  </button>
-
-                  <button
-                    type="button"
-                    className={`poi-search-type-btn ${
-                      form.searchType === "name" ? "active" : ""
-                    }`}
-                    onClick={() => handleChange("searchType", "name")}
-                  >
-                    By Name
-                  </button>
+                  <p>Choose a category and enter the query parameters below.</p>
                 </div>
 
                 <form onSubmit={handleSubmit} className="poi-form">
-                  {form.searchType === "category" ? (
-                    <label>
-                      Category
-                      <select
-                        value={form.category}
-                        onChange={(e) => handleChange("category", e.target.value)}
-                      >
-                        <option value="hospital">hospital</option>
-                        <option value="school">school</option>
-                        <option value="university">university</option>
-                        <option value="hotel">hotel</option>
-                        <option value="clinic">clinic</option>
-                        <option value="bank">bank</option>
-                      </select>
-                    </label>
-                  ) : (
-                    <label className="full-width">
-                      POI Name
-                      <input
-                        type="text"
-                        value={form.nameQuery}
-                        onChange={(e) =>
-                          handleChange("nameQuery", e.target.value)
-                        }
-                        placeholder="e.g. Libra, Mega Image, Ted's Coffee"
-                      />
-                    </label>
-                  )}
+                  <label>
+                    Category
+                    <select
+                      value={form.category}
+                      onChange={(e) => handleChange("category", e.target.value)}
+                    >
+                      <option value="hospital">hospital</option>
+                      <option value="school">school</option>
+                      <option value="stationery">stationery</option>
+                      <option value="post_office">post_office</option>
+                      <option value="cosmetics">cosmetics</option>
+                      <option value="gallery">gallery</option>
+                    </select>
+                  </label>
 
                   <label>
-                    K / Limit
+                    K
                     <input
                       type="number"
                       min="1"
@@ -412,86 +341,72 @@ export default function PoiSearchPage() {
                     />
                   </label>
 
-                  {form.searchType === "category" && (
-                    <>
-                      <label>
-                        Latitude (m)
-                        <input
-                          type="number"
-                          step="any"
-                          value={form.latitude_m}
-                          onChange={(e) =>
-                            handleChange("latitude_m", e.target.value)
-                          }
-                        />
-                      </label>
+                  <label>
+                    Latitude (°)
+                    <input
+                      type="number"
+                      step="any"
+                      value={form.latitude}
+                      onChange={(e) => handleChange("latitude", e.target.value)}
+                    />
+                  </label>
 
-                      <label>
-                        Longitude (m)
-                        <input
-                          type="number"
-                          step="any"
-                          value={form.longitude_m}
-                          onChange={(e) =>
-                            handleChange("longitude_m", e.target.value)
-                          }
-                        />
-                      </label>
+                  <label>
+                    Longitude (°)
+                    <input
+                      type="number"
+                      step="any"
+                      value={form.longitude}
+                      onChange={(e) => handleChange("longitude", e.target.value)}
+                    />
+                  </label>
 
-                      <label className="full-width">
-                        Scheme
-                        <select
-                          value={form.scheme}
-                          onChange={(e) => handleChange("scheme", e.target.value)}
-                        >
-                          <option value="plaintext">plaintext</option>
-                          <option value="ckks">ckks</option>
-                          <option value="concrete">concrete</option>
-                          <option value="openfhe_ss">openfhe_ss (scheme switching)</option>
-                          <option value="all">all</option>
-                        </select>
-                      </label>
+                  <label className="full-width">
+                    Scheme
+                    <select
+                      value={form.scheme}
+                      onChange={(e) => handleChange("scheme", e.target.value)}
+                    >
+                      <option value="plaintext">plaintext</option>
+                      <option value="ckks">ckks</option>
+                      <option value="concrete">concrete</option>
+                      <option value="openfhe_ss">openfhe_ss (scheme switching)</option>
+                      <option value="all">all</option>
+                    </select>
+                  </label>
 
-                      {form.scheme === "ckks" && (
-                        <div className="full-width poi-alert">
-                          CKKS uses approximate homomorphic encryption and is suited
-                          for real-valued coordinates.
-                        </div>
-                      )}
+                  {form.scheme === "ckks" && (
+                    <div className="full-width poi-alert">
+                      CKKS uses approximate homomorphic encryption and is suited
+                      for real-valued coordinates.
+                    </div>
+                  )}
 
-                      {form.scheme === "concrete" && (
-                        <div className="full-width poi-alert">
-                          Concrete uses TFHE — slower than CKKS/BFV but supports
-                          exact integer arithmetic. Each query may take several
-                          minutes; please be patient.
-                        </div>
-                      )}
+                  {form.scheme === "concrete" && (
+                    <div className="full-width poi-alert">
+                      Concrete uses TFHE — slower than CKKS/BFV but supports
+                      exact integer arithmetic. Each query may take several
+                      minutes; please be patient.
+                    </div>
+                  )}
 
-                      {form.scheme === "openfhe_ss" && (
-                        <div className="full-width poi-alert">
-                          OpenFHE Scheme Switching — server computes argmin directly
-                          on encrypted distances via CKKS→FHEW switching. Returns
-                          top-1 result. First request may take longer (key setup).
-                        </div>
-                      )}
+                  {form.scheme === "openfhe_ss" && (
+                    <div className="full-width poi-alert">
+                      OpenFHE Scheme Switching — server computes argmin directly
+                      on encrypted distances via CKKS→FHEW switching. Returns
+                      top-1 result. First request may take longer (key setup).
+                    </div>
+                  )}
 
-                      {form.scheme === "all" && (
-                        <div className="full-width poi-alert">
-                          All mode runs plaintext, CKKS, and OpenFHE Scheme Switching.
-                        </div>
-                      )}
-                    </>
+                  {form.scheme === "all" && (
+                    <div className="full-width poi-alert">
+                      All mode runs plaintext, CKKS, and OpenFHE Scheme Switching.
+                    </div>
                   )}
 
                   <div className="full-width poi-form-actions">
                     <button className="primary-btn" type="submit" disabled={loading}>
-                      {loading
-                        ? form.searchType === "name"
-                          ? "Searching by name..."
-                          : "Searching..."
-                        : form.searchType === "name"
-                        ? "Search POIs by Name"
-                        : "Search Nearest POIs"}
+                      {loading ? "Searching..." : "Search Nearest POIs"}
                     </button>
                   </div>
                 </form>
@@ -505,17 +420,13 @@ export default function PoiSearchPage() {
                   <p>
                     {mode === "all"
                       ? "Comparison across plaintext, CKKS, and OpenFHE Scheme Switching."
-                      : form.searchType === "name"
-                      ? "Returned POIs matching the entered name."
                       : "Returned nearest points of interest."}
                   </p>
                 </div>
 
                 {loading && (
                   <p className="poi-empty">
-                    {form.searchType === "name"
-                      ? "Searching by name..."
-                      : form.scheme === "all"
+                    {form.scheme === "all"
                       ? "Running plaintext, CKKS, and OpenFHE Scheme Switching..."
                       : form.scheme === "concrete"
                       ? "Running Concrete FHE — this may take several minutes..."
@@ -539,10 +450,7 @@ export default function PoiSearchPage() {
                         scheme={selectedScheme}
                       />
                     )}
-                    <ResultsTable
-                      results={results}
-                      showDistance={shouldShowDistance}
-                    />
+                    <ResultsTable results={results} />
                   </>
                 )}
 

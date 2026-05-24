@@ -39,9 +39,10 @@ _CC_CACHE: dict[str, Any] = {}
 
 repository = PoiRepository()
 
-# Must match DIST_SCALE_FACTOR used in client-side verification if needed.
-# Scale down large squared-metre distances to keep within CKKS precision.
-_DIST_SCALE = 1e-12
+# Scales squared-metre distances into the FHEW-optimal range [0, ~0.5].
+# Cluj city-scale max dist² ≈ 1e8 m²; 5e-9 maps that to ~0.5, safely below
+# the 1.0 padding mask.  Larger scale = more FHEW precision bits used.
+_DIST_SCALE = 5e-9
 
 # Fixed batch size matching the client runtime (N_SS=128).
 # All categories are padded to this size; the client restricts the winner
@@ -278,17 +279,33 @@ def execute_openfhe_ss_evaluate(
 
     dist2_ct = cc.EvalAdd(dy2, dx2)
 
-    # Scale all _BATCH_SIZE slots so padding slots get a non-zero scale.
-    scale_plain = cc.MakeCKKSPackedPlaintext([_DIST_SCALE] * _BATCH_SIZE)
-    dist2_scaled = cc.EvalMult(dist2_ct, scale_plain)
-
-    # Force padding slots (actual_n.._BATCH_SIZE-1) to a large distance so
-    # they can never win the argmin.  Real city-scale distances are < 0.01
-    # after scaling, so 1.0 is safely dominant.
+    # Force padding slots (actual_n.._BATCH_SIZE-1) to 0.9 so they can never
+    # win the argmin.  Real city-scale distances are < 0.5 after scaling;
+    # 0.9 lies safely inside the FHEW-valid [-1, 1] window.
+    #
+    # Root cause of the overflow: encrypted query coords are broadcast to all
+    # 128 slots, but OpenFHE zero-pads short py_plain/px_plain vectors, so
+    # padding slots compute dy = qy - 0 ≈ 5.9e6 → dist²_scaled ≈ 210,000.
+    # That is far outside [-1, 1], causing FHEW polynomial overflow → wrong
+    # argmin.
+    #
+    # Fix: fold the scale and the zeroing mask into ONE ct-pt EvalMult.
+    # This reduces server-side level consumption by 1 compared to doing
+    # EvalMult(scale) + EvalMult(keep_mask) separately, leaving one extra
+    # level available to EvalMinSchemeSwitching on the client.
     if actual_n < _BATCH_SIZE:
-        mask = [0.0] * actual_n + [1.0] * (_BATCH_SIZE - actual_n)
-        mask_plain = cc.MakeCKKSPackedPlaintext(mask)
-        dist2_scaled = cc.EvalAdd(dist2_scaled, mask_plain)
+        combined_scale = cc.MakeCKKSPackedPlaintext(
+            [_DIST_SCALE] * actual_n + [0.0] * (_BATCH_SIZE - actual_n)
+        )
+        dist2_scaled = cc.EvalMult(dist2_ct, combined_scale)  # scale real + zero padding
+
+        pad_plain = cc.MakeCKKSPackedPlaintext(
+            [0.0] * actual_n + [0.9] * (_BATCH_SIZE - actual_n)
+        )
+        dist2_scaled = cc.EvalAdd(dist2_scaled, pad_plain)  # set padding to 0.9
+    else:
+        scale_plain = cc.MakeCKKSPackedPlaintext([_DIST_SCALE] * _BATCH_SIZE)
+        dist2_scaled = cc.EvalMult(dist2_ct, scale_plain)
 
     compute_ms = compute_timer.elapsed_ms()
     print(f"[OpenFHE SS] Distances computed in {compute_ms:.1f}ms.", flush=True)

@@ -1,5 +1,5 @@
 # client_app/app/modules/poi_search/routes.py
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 from ..auth.dependencies import get_current_user
@@ -7,7 +7,6 @@ from .schemas import (
     CategoryListResponse,
     NearestKClientRequest,
     NearestKResponseType,
-    PoiNameSearchResponse,
 )
 from .service import PoiSearchClientService
 
@@ -17,11 +16,12 @@ service = PoiSearchClientService()
 
 class BenchmarkRequest(BaseModel):
     category: str
-    latitude_m: float
-    longitude_m: float
+    latitude: float
+    longitude: float
     k: int = Field(1, ge=1, le=50)
-    schemes: list[str] = ["plaintext", "ckks", "openfhe_ss"]
-    concrete_n_values: list[int] = [1, 2, 5, 10]
+    schemes: list[str] = ["plaintext", "ckks", "concrete", "openfhe_ss"]
+    concrete_n_values: list[int] = []
+    openfhe_n_values: list[int] = []
 
 
 @router.post("/nearest-k", response_model=NearestKResponseType)
@@ -39,11 +39,12 @@ async def run_benchmark(
 ):
     return await service.run_benchmark(
         category=request.category,
-        latitude_m=request.latitude_m,
-        longitude_m=request.longitude_m,
+        latitude=request.latitude,
+        longitude=request.longitude,
         k=request.k,
         schemes=request.schemes,
         concrete_n_values=request.concrete_n_values,
+        openfhe_n_values=request.openfhe_n_values,
     )
 
 
@@ -54,10 +55,24 @@ async def list_categories(
     return await service.list_categories()
 
 
-@router.get("/search-by-name", response_model=PoiNameSearchResponse)
-async def search_by_name(
-    q: str = Query(..., min_length=1),
-    limit: int = Query(10, ge=1, le=50),
+@router.post("/simulate-performance")
+async def run_performance_simulation(
     current_user: dict = Depends(get_current_user),
 ):
-    return await service.search_by_name(query=q, limit=limit)
+    return await service.run_performance_simulation()
+
+
+@router.get("/simulate-performance/history")
+async def get_simulation_history(
+    current_user: dict = Depends(get_current_user),
+):
+    return await service.get_simulation_history()
+
+
+@router.get("/benchmark/history")
+async def get_benchmark_history(
+    current_user: dict = Depends(get_current_user),
+):
+    return await service.get_benchmark_history()
+
+
