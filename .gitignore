@@ -1,0 +1,9 @@
+# Large RBA dataset
+database/anomaly-detection-dataset/
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/
+
+# Concrete generated artifacts
+client_app/.artifacts/concrete/
