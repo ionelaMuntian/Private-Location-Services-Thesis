@@ -145,12 +145,6 @@ export default function LoginPage() {
             </span>
           </h1>
 
-          <div className="login-tags">
-            <span>Trusted Client</span>
-            <span>Encrypted Queries</span>
-            <span>POI Search</span>
-            <span>Company Compliance</span>
-          </div>
         </section>
 
         <section className="login-right">

@@ -1,6 +1,7 @@
 # client_app/app/modules/poi_search/scenarios/benchmark.py
 
 import json
+import math
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -65,35 +66,18 @@ def _build_run_entry(scheme: str, n_candidates: int | None, result: dict) -> dic
     else:
         label = f"{scheme} (N={n_candidates})"
 
-    # Standard HE paper timing breakdown
-    encrypt_ms = client_t.get("prepare_query_ms")
-    upload_ms = client_t.get("upload_keys_ms")
-    # candidate_fetch_ms is Concrete-specific overhead (not pure FHE)
-    fetch_ms = client_t.get("candidate_fetch_ms")
-    server_eval_ms = (
-        server_t.get("evaluation_ms")
-        or server_t.get("computation_ms")
-    )
-    decrypt_ms = client_t.get("parse_response_ms")
-    client_total_ms = client_t.get("total_ms")
-    server_total_ms = server_t.get("total_ms")
-
     return {
         "label": label,
         "scheme": scheme,
         "n_candidates": workload.get("candidate_count") or n_candidates,
         "result": result.get("results", [{}])[0] if result.get("results") else {},
         "timing": {
-            "encrypt_ms": encrypt_ms,
-            "upload_ms": upload_ms,
-            "fetch_ms": fetch_ms,
-            "server_eval_ms": server_eval_ms,
-            "decrypt_ms": decrypt_ms,
-            "client_total_ms": client_total_ms,
-            "server_total_ms": server_total_ms,
-            # full raw timing for backward compat
-            "client": client_t,
-            "server": server_t,
+            "encrypt_ms": client_t.get("prepare_query_ms"),
+            "server_eval_ms": (
+                server_t.get("evaluation_ms") or server_t.get("computation_ms")
+            ),
+            "decrypt_ms": client_t.get("parse_response_ms"),
+            "client_total_ms": client_t.get("total_ms"),
         },
         "sizes": {
             "ciphertext_bytes": sizes.get("ciphertext_bytes", 0),
@@ -102,20 +86,25 @@ def _build_run_entry(scheme: str, n_candidates: int | None, result: dict) -> dic
     }
 
 
+def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Great-circle distance in km between two WGS-84 points."""
+    R = 6371.0
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlambda = math.radians(lon2 - lon1)
+    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
+    return R * 2 * math.asin(math.sqrt(a))
+
+
 def _attach_accuracy(runs: list) -> None:
     """
     Compares each run's top-1 result against the plaintext run (ground truth).
 
     Adds an `accuracy` dict to every run:
-      top1_match        — bool: same POI ID as plaintext
-      distance_error_km — absolute distance difference vs plaintext
-      relative_error_pct — distance_error / plaintext_distance * 100
+      top1_match       — bool: same POI ID as plaintext
+      poi_distance_km  — geographic distance between plaintext POI (A) and
+                         FHE-returned POI (B); 0.0 when both are the same POI.
     For error runs or when plaintext is missing, `accuracy` is None.
-
-    Standard HE paper metrics:
-      - Top-1 accuracy: fraction of queries where the FHE result matches plaintext
-      - Distance RMSE / MAE: deviation of the returned distance from true distance
-      - Relative error: scheme-specific quantization / approximation error
     """
     pt = next(
         (r for r in runs
@@ -126,7 +115,8 @@ def _attach_accuracy(runs: list) -> None:
     )
 
     true_id: int | None = pt["result"].get("id") if pt else None
-    true_dist: float | None = pt["result"].get("distance_km") if pt else None
+    true_lat: float | None = pt["result"].get("latitude") if pt else None
+    true_lon: float | None = pt["result"].get("longitude") if pt else None
 
     for run in runs:
         if run.get("error"):
@@ -135,23 +125,25 @@ def _attach_accuracy(runs: list) -> None:
 
         result = run.get("result") or {}
         pred_id = result.get("id")
-        pred_dist = result.get("distance_km")
+        pred_lat = result.get("latitude")
+        pred_lon = result.get("longitude")
 
         if run.get("scheme") == "plaintext":
-            run["accuracy"] = {
-                "top1_match": True,
-                "distance_error_km": 0.0,
-                "relative_error_pct": 0.0,
-            }
+            run["accuracy"] = {"top1_match": True, "poi_distance_km": 0.0}
             continue
 
         acc: dict = {}
         if true_id is not None and pred_id is not None:
             acc["top1_match"] = (int(pred_id) == int(true_id))
-        if true_dist is not None and pred_dist is not None and true_dist > 0:
-            err = abs(float(pred_dist) - float(true_dist))
-            acc["distance_error_km"] = round(err, 4)
-            acc["relative_error_pct"] = round(err / float(true_dist) * 100, 2)
+
+        if (true_lat is not None and true_lon is not None
+                and pred_lat is not None and pred_lon is not None):
+            if acc.get("top1_match"):
+                acc["poi_distance_km"] = 0.0
+            else:
+                acc["poi_distance_km"] = round(
+                    _haversine_km(true_lat, true_lon, pred_lat, pred_lon), 4
+                )
 
         run["accuracy"] = acc if acc else None
 

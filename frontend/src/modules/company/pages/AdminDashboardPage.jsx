@@ -5,17 +5,32 @@ import "../../poi-search/styles/poi-search.css";
 const API_BASE_URL = "http://127.0.0.1:8000";
 const COMPANY_API = `${API_BASE_URL}/client/company`;
 
+// Degree ↔ Web Mercator (EPSG:3857) conversion helpers
+function degToMercatorLon(lon) {
+  return lon * 20037508.34 / 180;
+}
+function degToMercatorLat(lat) {
+  return Math.log(Math.tan((90 + lat) * Math.PI / 360)) * 20037508.34 / Math.PI;
+}
+function mercatorLonToDeg(x) {
+  return x * 180 / 20037508.34;
+}
+function mercatorLatToDeg(y) {
+  return (Math.atan(Math.exp(y * Math.PI / 20037508.34)) * 360 / Math.PI) - 90;
+}
+
+// Form state uses decimal degrees; numberiseForm converts to meters before the API call.
 const BLANK_FORM = {
   name: "Technical University of Cluj-Napoca",
   allowed_country: "Romania",
   office_name: "Cluj Office",
-  office_lat_m: 5901100,
-  office_lon_m: 2626008,
+  office_lat: 46.77,
+  office_lon: 23.59,
   office_radius_m: 300,
-  country_north_m: 6120000,
-  country_south_m: 5424000,
-  country_east_m: 3302000,
-  country_west_m: 2256000,
+  country_north: 48.27,
+  country_south: 43.62,
+  country_east: 29.67,
+  country_west: 20.26,
 };
 
 export default function AdminDashboardPage() {
@@ -165,13 +180,13 @@ export default function AdminDashboardPage() {
         name: company.name,
         allowed_country: company.allowed_country,
         office_name: company.office_name,
-        office_lat_m: company.office_lat_m,
-        office_lon_m: company.office_lon_m,
+        office_lat: mercatorLatToDeg(company.office_lat_m),
+        office_lon: mercatorLonToDeg(company.office_lon_m),
         office_radius_m: company.office_radius_m,
-        country_north_m: company.country_north_m ?? "",
-        country_south_m: company.country_south_m ?? "",
-        country_east_m: company.country_east_m ?? "",
-        country_west_m: company.country_west_m ?? "",
+        country_north: company.country_north_m != null ? mercatorLatToDeg(company.country_north_m) : "",
+        country_south: company.country_south_m != null ? mercatorLatToDeg(company.country_south_m) : "",
+        country_east:  company.country_east_m  != null ? mercatorLonToDeg(company.country_east_m)  : "",
+        country_west:  company.country_west_m  != null ? mercatorLonToDeg(company.country_west_m)  : "",
       });
     }
   };
@@ -345,7 +360,7 @@ export default function AdminDashboardPage() {
                   <section className="poi-card">
                     <div className="poi-card-header">
                       <h3>New Company</h3>
-                      <p>All coordinates are in Web Mercator meters (EPSG:3857).</p>
+                      <p>Office and country coordinates are entered in decimal degrees (WGS84).</p>
                     </div>
                     <form className="poi-form" onSubmit={handleCreateCompany}>
                       <CompanyFormFields form={createForm} onChange={(f, v) => setCreateForm((p) => ({ ...p, [f]: v }))} />
@@ -688,13 +703,13 @@ function CompanyFormFields({ form, onChange }) {
       </label>
 
       <label>
-        Office Latitude (m)
-        <input type="number" step="any" value={form.office_lat_m} onChange={(e) => onChange("office_lat_m", e.target.value)} />
+        Office Latitude (°)
+        <input type="number" step="any" value={form.office_lat} onChange={(e) => onChange("office_lat", e.target.value)} />
       </label>
 
       <label>
-        Office Longitude (m)
-        <input type="number" step="any" value={form.office_lon_m} onChange={(e) => onChange("office_lon_m", e.target.value)} />
+        Office Longitude (°)
+        <input type="number" step="any" value={form.office_lon} onChange={(e) => onChange("office_lon", e.target.value)} />
       </label>
 
       <label>
@@ -703,23 +718,23 @@ function CompanyFormFields({ form, onChange }) {
       </label>
 
       <label>
-        Country North (m)
-        <input type="number" step="any" value={form.country_north_m} onChange={(e) => onChange("country_north_m", e.target.value)} />
+        Country North Boundary (°)
+        <input type="number" step="any" value={form.country_north} onChange={(e) => onChange("country_north", e.target.value)} />
       </label>
 
       <label>
-        Country South (m)
-        <input type="number" step="any" value={form.country_south_m} onChange={(e) => onChange("country_south_m", e.target.value)} />
+        Country South Boundary (°)
+        <input type="number" step="any" value={form.country_south} onChange={(e) => onChange("country_south", e.target.value)} />
       </label>
 
       <label>
-        Country East (m)
-        <input type="number" step="any" value={form.country_east_m} onChange={(e) => onChange("country_east_m", e.target.value)} />
+        Country East Boundary (°)
+        <input type="number" step="any" value={form.country_east} onChange={(e) => onChange("country_east", e.target.value)} />
       </label>
 
       <label>
-        Country West (m)
-        <input type="number" step="any" value={form.country_west_m} onChange={(e) => onChange("country_west_m", e.target.value)} />
+        Country West Boundary (°)
+        <input type="number" step="any" value={form.country_west} onChange={(e) => onChange("country_west", e.target.value)} />
       </label>
     </>
   );
@@ -740,15 +755,20 @@ function FeedbackSection({ message, error }) {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function numberiseForm(form) {
+  const toLatM  = (deg) => degToMercatorLat(Number(deg));
+  const toLonM  = (deg) => degToMercatorLon(Number(deg));
+  const toOptM  = (deg, fn) => (deg !== "" && deg != null ? fn(Number(deg)) : null);
   return {
-    ...form,
-    office_lat_m: Number(form.office_lat_m),
-    office_lon_m: Number(form.office_lon_m),
+    name: form.name,
+    allowed_country: form.allowed_country,
+    office_name: form.office_name,
+    office_lat_m: toLatM(form.office_lat),
+    office_lon_m: toLonM(form.office_lon),
     office_radius_m: Number(form.office_radius_m),
-    country_north_m: Number(form.country_north_m),
-    country_south_m: Number(form.country_south_m),
-    country_east_m: Number(form.country_east_m),
-    country_west_m: Number(form.country_west_m),
+    country_north_m: toOptM(form.country_north, toLatM),
+    country_south_m: toOptM(form.country_south, toLatM),
+    country_east_m:  toOptM(form.country_east,  toLonM),
+    country_west_m:  toOptM(form.country_west,  toLonM),
   };
 }
 

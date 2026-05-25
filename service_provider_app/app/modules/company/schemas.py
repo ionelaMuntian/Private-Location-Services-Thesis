@@ -10,13 +10,17 @@ class ComplianceEvaluationRequest(BaseModel):
     encrypted_current_lat: str
     encrypted_current_lon: str
 
-    encrypted_home_lat: str
-    encrypted_home_lon: str
-    encrypted_home_radius: str
+    # Home bounding-box corners (lat ± radius, lon ± radius, all scaled)
+    encrypted_home_north: str
+    encrypted_home_south: str
+    encrypted_home_east: str
+    encrypted_home_west: str
 
-    encrypted_office_lat: str
-    encrypted_office_lon: str
-    encrypted_office_radius: str
+    # Office bounding-box corners
+    encrypted_office_north: str
+    encrypted_office_south: str
+    encrypted_office_east: str
+    encrypted_office_west: str
 
     encrypted_country_north: str
     encrypted_country_south: str
@@ -25,8 +29,14 @@ class ComplianceEvaluationRequest(BaseModel):
 
 
 class ComplianceEvaluationResponse(BaseModel):
-    encrypted_home_margin: str
-    encrypted_office_margin: str
+    encrypted_home_north_margin: str
+    encrypted_home_south_margin: str
+    encrypted_home_east_margin: str
+    encrypted_home_west_margin: str
+    encrypted_office_north_margin: str
+    encrypted_office_south_margin: str
+    encrypted_office_east_margin: str
+    encrypted_office_west_margin: str
     encrypted_country_north_margin: str
     encrypted_country_south_margin: str
     encrypted_country_east_margin: str

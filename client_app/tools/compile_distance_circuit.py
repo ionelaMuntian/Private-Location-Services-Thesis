@@ -38,12 +38,12 @@ ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
 
 SUPPORTED_N = [1, 5, 12, 13, 14, 15]
 
-# Cluj-Napoca dataset: after ÷3000 and reference subtraction the shifted
-# coordinates fit in [0, 8] × [0, 8] (max shifted_m / 3000 ≈ 8.1).
-# Max dist² = 8² + 8² = 128 (~8 bits) — PBS LUT has 256 entries.
-# Keys are larger than the 7-bit variant but still manageable (~200 MB).
-COORD_MAX_X = 8
-COORD_MAX_Y = 8
+# Cluj-Napoca dataset: after ÷2200 and reference subtraction the shifted
+# coordinates fit in [0, 11] × [0, 11] (max shifted_m / 2200 ≈ 11.04).
+# Max dist² = 11² + 11² = 242 (~8 bits) — PBS LUT has 256 entries.
+# Same key sizes as the original 3000-scale circuits; 27% finer resolution.
+COORD_MAX_X = 11
+COORD_MAX_Y = 11
 
 # p_error: probability that a SINGLE PBS operation produces a wrong output.
 # Unlike global_p_error, this is circuit-size independent — the optimizer
@@ -54,10 +54,10 @@ COORD_MAX_Y = 8
 # than uncompressed, so we can afford tighter p_error without hitting gRPC
 # transfer limits.
 #
-# 1e-4 per PBS → circuit error (N=5 has ~22 PBS including squarings):
-#   N=5  (~22 PBS): 1 - (1-1e-4)^22 ≈ 0.22%   → ~1 in 450 queries fails
-#   N=15 (~62 PBS): 1 - (1-1e-4)^62 ≈ 0.62%   → ~1 in 160 queries fails
-_P_ERROR = 1e-4
+# 1e-5 per PBS → circuit error (N=5 has ~22 PBS including squarings):
+#   N=5  (~22 PBS): 1 - (1-1e-5)^22 ≈ 0.022%  → ~1 in 4 500 queries fails
+#   N=15 (~62 PBS): 1 - (1-1e-5)^62 ≈ 0.062%  → ~1 in 1 600 queries fails
+_P_ERROR = 1e-5
 
 
 # ---------------------------------------------------------------------------
@@ -125,18 +125,18 @@ def _build_inputset(n: int) -> list:
     signal and allocate the right number of bits.  Three samples are enough:
 
     Sample A — user at (0, 0), all POIs at (COORD_MAX_X, COORD_MAX_Y)
-        • dist² = 16²+15² = 481  →  Concrete allocates 9-bit integers
+        • dist² = 11²+11² = 242  →  Concrete allocates 8-bit integers
         • min_id = 1  (no update: all distances equal, strict < never True)
         • qx_rel = 0, qy_rel = 0  (minimum user coordinates)
         • np.where condition always False  →  exercises the False branch
 
     Sample B — user at (COORD_MAX_X, COORD_MAX_Y), all POIs at (0, 0)
-        • Same max dist² = 481
-        • qx_rel = 16, qy_rel = 15  (maximum user coordinates)
+        • Same max dist² = 242
+        • qx_rel = 11, qy_rel = 11  (maximum user coordinates)
         • min_id = 1
 
     Sample C — user at centre (cx, cy), last POI at (cx, cy), all others at (0, 0)
-        • Last POI wins: dist²=0; all others dist²=cx²+cy²=113
+        • Last POI wins: dist²=0; all others dist²=cx²+cy²=60
         • min_id = N  →  combined with A&B giving min_id=1, Concrete infers
           min_id ∈ [1, N] and allocates ⌈log₂(N)⌉ bits correctly
         • dist² = 0  →  Concrete sees the minimum dist² value
@@ -148,8 +148,8 @@ def _build_inputset(n: int) -> list:
     to infer [1..N].  The intermediate IDs 2..N-1 add no new bit-width
     information and only inflate tracing time.
     """
-    cx = COORD_MAX_X // 2   # 8
-    cy = COORD_MAX_Y // 2   # 7
+    cx = COORD_MAX_X // 2   # 5
+    cy = COORD_MAX_Y // 2   # 5
 
     # ── Sample A: user at origin, all POIs at far corner ──
     args: list = [np.int64(0), np.int64(0)]

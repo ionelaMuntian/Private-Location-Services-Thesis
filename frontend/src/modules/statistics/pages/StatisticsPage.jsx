@@ -2,8 +2,8 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
-  LineChart, Line, Cell,
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+  LineChart, Line,
 } from "recharts";
 import "../styles/statistics.css";
 
@@ -12,10 +12,9 @@ const HISTORY_URL = "http://127.0.0.1:8000/client/poi/benchmark/history";
 const SIM_URL = "http://127.0.0.1:8000/client/poi/simulate-performance";
 const SIM_HISTORY_URL = "http://127.0.0.1:8000/client/poi/simulate-performance/history";
 const BENCHMARK_TIMEOUT_MS = 7200000;
-const SIM_TIMEOUT_MS = 14400000; // 4 h — openfhe_ss × 60 calls
+const SIM_TIMEOUT_MS = 14400000;
 
-const CATEGORIES = ["hospital", "school", "university", "hotel", "clinic", "bank"];
-const SCHEME_OPTIONS = ["plaintext", "ckks", "concrete", "openfhe_ss"];
+const SCHEME_OPTIONS = ["plaintext", "concrete", "openfhe_ss"];
 const CONCRETE_N_OPTIONS = [1, 5, 12, 13, 14, 15];
 const OPENFHE_N_OPTIONS = [1, 5, 12, 13, 14, 15, 22, 43, 62, 122];
 const DEFAULT_LAT = 46.77;
@@ -30,6 +29,12 @@ function fmtMs(v) {
   return `${n.toFixed(1)} ms`;
 }
 
+function fmtMsShort(v) {
+  if (v >= 60000) return `${(v / 60000).toFixed(0)}min`;
+  if (v >= 1000) return `${(v / 1000).toFixed(0)}s`;
+  return `${v}ms`;
+}
+
 function fmtBytes(v) {
   if (v === null || v === undefined || v === 0) return v === 0 ? "0 B" : "—";
   const n = Number(v);
@@ -37,6 +42,12 @@ function fmtBytes(v) {
   if (n >= 1048576) return `${(n / 1048576).toFixed(2)} MB`;
   if (n >= 1024) return `${(n / 1024).toFixed(1)} KB`;
   return `${n} B`;
+}
+
+function fmtBytesShort(v) {
+  if (v >= 1048576) return `${(v / 1048576).toFixed(1)}MB`;
+  if (v >= 1024) return `${(v / 1024).toFixed(0)}KB`;
+  return `${v}B`;
 }
 
 function fmtTimestamp(ts) {
@@ -51,10 +62,9 @@ function fmtTimestamp(ts) {
 export default function StatisticsPage() {
   const navigate = useNavigate();
 
-  const [category, setCategory] = useState("clinic");
   const [lat, setLat] = useState(DEFAULT_LAT);
   const [lon, setLon] = useState(DEFAULT_LON);
-  const [selectedSchemes, setSelectedSchemes] = useState(["plaintext", "ckks", "openfhe_ss"]);
+  const [selectedSchemes, setSelectedSchemes] = useState(["plaintext", "openfhe_ss"]);
   const [selectedN, setSelectedN] = useState([]);
 
   const [loading, setLoading] = useState(false);
@@ -65,7 +75,6 @@ export default function StatisticsPage() {
   const [history, setHistory] = useState([]);
   const [currentSession, setCurrentSession] = useState(null);
 
-  // --- Performance simulation state ---
   const [simLoading, setSimLoading] = useState(false);
   const [simError, setSimError] = useState("");
   const [simSession, setSimSession] = useState(null);
@@ -137,7 +146,7 @@ export default function StatisticsPage() {
       const response = await axios.post(
         BENCHMARK_URL,
         {
-          category,
+          category: "hospital",
           latitude: Number(lat),
           longitude: Number(lon),
           k: 1,
@@ -198,35 +207,72 @@ export default function StatisticsPage() {
 
   const runs = currentSession?.runs || [];
   const successRuns = runs.filter((r) => !r.error);
-  const concreteNRuns = runs
-    .filter((r) => r.scheme === "concrete" && r.label !== "concrete" && !r.error)
+
+  const allNSpecificRuns = runs.filter((r) =>
+    (r.scheme === "concrete" && r.label !== "concrete") ||
+    (r.scheme === "openfhe_ss" && r.label !== "openfhe_ss")
+  );
+  const concreteNRuns = allNSpecificRuns
+    .filter((r) => r.scheme === "concrete" && !r.error)
     .sort((a, b) => (a.n_candidates || 0) - (b.n_candidates || 0));
-  const openfheNRuns = runs
-    .filter((r) => r.scheme === "openfhe_ss" && r.label !== "openfhe_ss" && !r.error)
+  const openfheNRuns = allNSpecificRuns
+    .filter((r) => r.scheme === "openfhe_ss" && !r.error)
     .sort((a, b) => (a.n_candidates || 0) - (b.n_candidates || 0));
 
-  const phaseData = successRuns.map((r) => {
-    const enc = r.timing?.encrypt_ms || 0;
-    const srv = r.timing?.server_eval_ms || 0;
-    const dec = r.timing?.decrypt_ms || 0;
-    const upl = r.timing?.upload_ms || 0;
-    const fch = r.timing?.fetch_ms || 0;
-    const tot = r.timing?.client_total_ms || 0;
-    const other = Math.max(0, tot - enc - srv - dec - upl - fch);
-    return {
-      name: r.label,
-      "Encrypt": +enc.toFixed(1),
-      "Server eval": +srv.toFixed(1),
-      "Decrypt": +dec.toFixed(1),
-      "Other": +other.toFixed(1),
-    };
-  });
+  const baseRuns = runs.filter((r) => r.scheme === "plaintext");
 
-  const allNScaleN = [...new Set([
-    ...concreteNRuns.map((r) => r.n_candidates),
-    ...openfheNRuns.map((r) => r.n_candidates),
-  ])].sort((a, b) => a - b);
-  const lineData = allNScaleN.map((n) => {
+  const allNValues = [...new Set(
+    allNSpecificRuns.map((r) => r.n_candidates).filter((n) => n != null)
+  )].sort((a, b) => a - b);
+
+  const concretePhaseLineData = runs
+    .filter((r) => r.scheme === "concrete" && !r.error)
+    .sort((a, b) => (a.n_candidates || 0) - (b.n_candidates || 0))
+    .map((r) => ({
+      name: r.n_candidates != null ? `N=${r.n_candidates}` : r.label,
+      "Encrypt": +(r.timing?.encrypt_ms || 0).toFixed(1),
+      "Server eval": +(r.timing?.server_eval_ms || 0).toFixed(1),
+      "Decrypt": +(r.timing?.decrypt_ms || 0).toFixed(1),
+    }));
+
+  const openfhePhaseLineData = runs
+    .filter((r) => r.scheme === "openfhe_ss" && !r.error)
+    .sort((a, b) => (a.n_candidates || 0) - (b.n_candidates || 0))
+    .map((r) => ({
+      name: r.n_candidates != null ? `N=${r.n_candidates}` : r.label,
+      "Encrypt": +(r.timing?.encrypt_ms || 0).toFixed(1),
+      "Server eval": +(r.timing?.server_eval_ms || 0).toFixed(1),
+      "Decrypt": +(r.timing?.decrypt_ms || 0).toFixed(1),
+    }));
+
+  const concreteSizeData = runs
+    .filter((r) => r.scheme === "concrete" && !r.error && (r.sizes?.ciphertext_bytes || 0) + (r.sizes?.key_bytes || 0) > 0)
+    .sort((a, b) => (a.n_candidates || 0) - (b.n_candidates || 0))
+    .map((r) => ({
+      name: r.n_candidates != null ? `N=${r.n_candidates}` : r.label,
+      "Ciphertext": r.sizes?.ciphertext_bytes ?? 0,
+      "Keys": r.sizes?.key_bytes ?? 0,
+    }));
+
+  const openfheSizeData = runs
+    .filter((r) => r.scheme === "openfhe_ss" && !r.error && (r.sizes?.ciphertext_bytes || 0) + (r.sizes?.key_bytes || 0) > 0)
+    .sort((a, b) => (a.n_candidates || 0) - (b.n_candidates || 0))
+    .map((r) => ({
+      name: r.n_candidates != null ? `N=${r.n_candidates}` : r.label,
+      "Ciphertext": r.sizes?.ciphertext_bytes ?? 0,
+      "Keys": r.sizes?.key_bytes ?? 0,
+    }));
+
+  const accuracyLineData = allNValues.map((n) => {
+    const cr = allNSpecificRuns.find((r) => r.scheme === "concrete" && r.n_candidates === n && !r.error && r.accuracy != null);
+    const or = allNSpecificRuns.find((r) => r.scheme === "openfhe_ss" && r.n_candidates === n && !r.error && r.accuracy != null);
+    const entry = { N: n };
+    if (cr) entry["Concrete"] = +(cr.accuracy?.poi_distance_km ?? 0).toFixed(4);
+    if (or) entry["OpenFHE SS"] = +(or.accuracy?.poi_distance_km ?? 0).toFixed(4);
+    return entry;
+  }).filter((e) => e.Concrete != null || e["OpenFHE SS"] != null);
+
+  const lineData = allNValues.map((n) => {
     const cr = concreteNRuns.find((r) => r.n_candidates === n);
     const or = openfheNRuns.find((r) => r.n_candidates === n);
     const entry = { N: n };
@@ -234,22 +280,6 @@ export default function StatisticsPage() {
     if (or) entry["OpenFHE SS total"] = +(or.timing?.client_total_ms || 0).toFixed(1);
     return entry;
   });
-
-  const sizeData = successRuns
-    .filter((r) => (r.sizes?.ciphertext_bytes || 0) + (r.sizes?.key_bytes || 0) > 0)
-    .map((r) => ({
-      name: r.label,
-      "Ciphertext": r.sizes?.ciphertext_bytes ?? 0,
-      "Keys": r.sizes?.key_bytes ?? 0,
-    }));
-
-  const accuracyData = successRuns
-    .filter((r) => r.accuracy != null && r.scheme !== "plaintext")
-    .map((r) => ({
-      name: r.label,
-      "Relative error (%)": +(r.accuracy?.relative_error_pct ?? 0).toFixed(2),
-      match: r.accuracy?.top1_match,
-    }));
 
   return (
     <div className="stats-page">
@@ -285,27 +315,15 @@ export default function StatisticsPage() {
               <div>
                 <p className="poi-eyebrow">Performance Analysis</p>
                 <h1>Statistics &amp; Benchmarks</h1>
-                <p className="poi-subtitle">
-                  Compare standard FHE metrics across schemes: encryption time, server evaluation,
-                  decryption, and communication overhead. Results are saved and reload automatically.
-                </p>
               </div>
             </header>
 
-            {/* Config card */}
             <div className="stats-config-card poi-card">
               <div className="poi-card-header">
                 <h3>Benchmark Configuration</h3>
               </div>
 
               <div className="stats-config-grid">
-                <label className="stats-label">
-                  Category
-                  <select value={category} onChange={(e) => setCategory(e.target.value)} className="stats-input">
-                    {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                </label>
-
                 <label className="stats-label">
                   Latitude (°)
                   <input type="number" value={lat} onChange={(e) => setLat(e.target.value)} className="stats-input" step="any" />
@@ -351,13 +369,6 @@ export default function StatisticsPage() {
                         </label>
                       ))}
                     </div>
-                    <p className="stats-hint">
-                      {hasConcrete && hasOpenfhe
-                        ? "Only N values with pre-compiled Concrete circuits are available when both schemes are selected. OpenFHE SS runs use the matching dataset category for each N."
-                        : hasConcrete
-                        ? "Concrete N-scaling runs execute one pre-compiled circuit per N value. Large values can take several minutes."
-                        : "OpenFHE SS N-scaling runs use the dataset category that naturally has ~N POIs. OpenFHE SS always pads to 128 slots internally."}
-                    </p>
                   </div>
                 )}
               </div>
@@ -374,293 +385,274 @@ export default function StatisticsPage() {
               {error && <div className="poi-alert poi-alert-error">{error}</div>}
             </div>
 
-            {/* History browser */}
-            {!historyLoading && history.length > 0 && (
-              <div className="poi-card stats-section">
-                <div className="poi-card-header">
-                  <h3>Session History</h3>
-                  <p>
-                    Results are persisted across container restarts.
-                    Click a session to view its results.
-                  </p>
-                </div>
-                <div className="stats-history-scroll">
-                  {history.map((s) => (
-                    <button
-                      key={s.id}
-                      type="button"
-                      className={`stats-session-card${currentSession?.id === s.id ? " active" : ""}`}
-                      onClick={() => setCurrentSession(s)}
-                    >
-                      <span className="stats-session-time">{fmtTimestamp(s.timestamp)}</span>
-                      <span className="stats-session-cat">{s.category}</span>
-                      <span className="stats-session-runs">
-                        {(s.runs || []).filter((r) => !r.error).length} / {(s.runs || []).length} runs
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
 
-            {/* Empty state */}
             {!historyLoading && !loading && runs.length === 0 && (
               <div className="poi-card stats-section stats-empty">
                 <p>No benchmark data yet. Configure the options above and click <strong>Run Benchmark</strong>.</p>
-                <p className="stats-hint">Results will be saved and automatically reloaded on your next visit.</p>
               </div>
             )}
 
-            {/* HE paper metrics table */}
             {runs.length > 0 && (
               <div className="poi-card stats-section">
                 <div className="poi-card-header">
                   <h3>FHE Performance Metrics</h3>
-                  <p>
-                    Standard metrics from FHE research papers — encryption time, server-side evaluation,
-                    decryption, and communication overhead.
-                    {currentSession?.timestamp && (
-                      <span className="stats-session-badge">
-                        {fmtTimestamp(currentSession.timestamp)} · {currentSession.category}
-                      </span>
-                    )}
-                  </p>
                 </div>
-                <div className="poi-table-wrap">
-                  <table className="poi-table stats-metrics-table">
+                <div className="stats-plain-wrap">
+                  <table className="stats-plain-table">
                     <thead>
                       <tr>
+                        <th>N</th>
                         <th>Scheme</th>
-                        <th>N POIs</th>
-                        <th title="Client: prepare_query_ms">Encrypt</th>
-                        <th title="Concrete: upload_keys_ms">Key upload</th>
-                        <th title="Concrete: candidate_fetch_ms">Fetch cand.</th>
-                        <th title="Server: evaluation_ms or computation_ms">Server eval</th>
-                        <th title="Client: parse_response_ms">Decrypt</th>
-                        <th>Client total</th>
-                        <th>Server total</th>
+                        <th>Encrypt</th>
+                        <th>Server eval</th>
+                        <th>Decrypt</th>
+                        <th>Total</th>
                         <th>Ciphertext</th>
                         <th>Eval keys</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {runs.map((r) =>
+                      {baseRuns.map((r) =>
                         r.error ? (
-                          <tr key={r.label} className="stats-error-row">
+                          <tr key={r.label}>
+                            <td>{r.n_candidates ?? "—"}</td>
                             <td><strong>{r.label}</strong></td>
-                            <td colSpan={10} className="stats-error-cell">{r.error}</td>
+                            <td colSpan={6}>{r.error}</td>
                           </tr>
                         ) : (
                           <tr key={r.label}>
-                            <td><strong>{r.label}</strong></td>
                             <td>{r.n_candidates ?? "—"}</td>
+                            <td><strong>{r.label}</strong></td>
                             <td>{fmtMs(r.timing?.encrypt_ms)}</td>
-                            <td>{fmtMs(r.timing?.upload_ms)}</td>
-                            <td>{fmtMs(r.timing?.fetch_ms)}</td>
-                            <td className="stats-highlight-cell">{fmtMs(r.timing?.server_eval_ms)}</td>
+                            <td>{fmtMs(r.timing?.server_eval_ms)}</td>
                             <td>{fmtMs(r.timing?.decrypt_ms)}</td>
                             <td><strong>{fmtMs(r.timing?.client_total_ms)}</strong></td>
-                            <td>{fmtMs(r.timing?.server_total_ms)}</td>
                             <td>{fmtBytes(r.sizes?.ciphertext_bytes)}</td>
                             <td>{fmtBytes(r.sizes?.key_bytes)}</td>
                           </tr>
                         )
                       )}
+                      {allNValues.flatMap((n) => {
+                        const cr = allNSpecificRuns.find((r) => r.scheme === "concrete" && r.n_candidates === n);
+                        const or = allNSpecificRuns.find((r) => r.scheme === "openfhe_ss" && r.n_candidates === n);
+                        const schemeRows = [
+                          cr ? { label: "Concrete", run: cr } : null,
+                          or ? { label: "OpenFHE SS", run: or } : null,
+                        ].filter(Boolean);
+                        if (schemeRows.length === 0) return [];
+                        return schemeRows.map(({ label, run }, idx) => (
+                          <tr key={run.label}>
+                            {idx === 0 && (
+                              <td rowSpan={schemeRows.length}>
+                                <strong>{n}</strong>
+                              </td>
+                            )}
+                            {run.error ? (
+                              <>
+                                <td>{label}</td>
+                                <td colSpan={6}>{run.error}</td>
+                              </>
+                            ) : (
+                              <>
+                                <td>{label}</td>
+                                <td>{fmtMs(run.timing?.encrypt_ms)}</td>
+                                <td>{fmtMs(run.timing?.server_eval_ms)}</td>
+                                <td>{fmtMs(run.timing?.decrypt_ms)}</td>
+                                <td><strong>{fmtMs(run.timing?.client_total_ms)}</strong></td>
+                                <td>{fmtBytes(run.sizes?.ciphertext_bytes)}</td>
+                                <td>{fmtBytes(run.sizes?.key_bytes)}</td>
+                              </>
+                            )}
+                          </tr>
+                        ));
+                      })}
                     </tbody>
                   </table>
                 </div>
               </div>
             )}
 
-            {/* Accuracy table */}
             {successRuns.some((r) => r.accuracy != null) && (
               <div className="poi-card stats-section">
                 <div className="poi-card-header">
                   <h3>Result Accuracy</h3>
-                  <p>
-                    Plaintext is the ground truth. Each HE scheme is evaluated on whether it returns
-                    the correct nearest POI and how close its reported distance is to the true distance.
-                  </p>
                 </div>
-                <div className="poi-table-wrap">
-                  <table className="poi-table stats-metrics-table">
+                <div className="stats-plain-wrap">
+                  <table className="stats-plain-table">
                     <thead>
                       <tr>
+                        <th>N</th>
                         <th>Scheme</th>
-                        <th>N POIs</th>
                         <th>POI returned</th>
                         <th>Distance (km)</th>
                         <th>Top-1 correct</th>
-                        <th title="|d_HE − d_plaintext|">Distance error</th>
-                        <th title="|d_HE − d_plaintext| / d_plaintext × 100">Relative error</th>
+                        <th>Dist. A→B</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {successRuns.map((r) => {
+                      {baseRuns.filter((r) => !r.error && r.accuracy != null).map((r) => {
                         const acc = r.accuracy;
                         const isPlaintext = r.scheme === "plaintext";
                         const match = acc?.top1_match;
                         return (
                           <tr key={r.label}>
-                            <td><strong>{r.label}</strong></td>
                             <td>{r.n_candidates ?? "—"}</td>
-                            <td className="stats-poi-name">{r.result?.name ?? "—"}</td>
+                            <td><strong>{r.label}</strong></td>
+                            <td>{r.result?.name ?? "—"}</td>
                             <td>{r.result?.distance_km != null ? `${Number(r.result.distance_km).toFixed(4)} km` : "—"}</td>
+                            <td>{isPlaintext ? "reference" : match === true ? "Yes" : match === false ? "No" : "—"}</td>
                             <td>
-                              {isPlaintext ? (
-                                <span className="stats-badge stats-badge-ref">reference</span>
-                              ) : match === true ? (
-                                <span className="stats-badge stats-badge-ok">✓ yes</span>
-                              ) : match === false ? (
-                                <span className="stats-badge stats-badge-err">✗ no</span>
-                              ) : "—"}
-                            </td>
-                            <td>
-                              {isPlaintext ? "0.0000 km" : acc?.distance_error_km != null ? `${acc.distance_error_km.toFixed(4)} km` : "—"}
-                            </td>
-                            <td className={acc?.relative_error_pct > 5 ? "stats-error-cell" : ""}>
-                              {isPlaintext ? "0.00 %" : acc?.relative_error_pct != null ? `${acc.relative_error_pct.toFixed(2)} %` : "—"}
+                              {isPlaintext ? "—" : acc?.poi_distance_km != null ? `${acc.poi_distance_km.toFixed(4)} km` : "—"}
                             </td>
                           </tr>
                         );
+                      })}
+                      {allNValues.flatMap((n) => {
+                        const cr = allNSpecificRuns.find((r) => r.scheme === "concrete" && r.n_candidates === n && !r.error && r.accuracy != null);
+                        const or = allNSpecificRuns.find((r) => r.scheme === "openfhe_ss" && r.n_candidates === n && !r.error && r.accuracy != null);
+                        const schemeRows = [
+                          cr ? { label: "Concrete", run: cr } : null,
+                          or ? { label: "OpenFHE SS", run: or } : null,
+                        ].filter(Boolean);
+                        if (schemeRows.length === 0) return [];
+                        return schemeRows.map(({ label, run }, idx) => {
+                          const acc = run.accuracy;
+                          const match = acc?.top1_match;
+                          return (
+                            <tr key={run.label}>
+                              {idx === 0 && (
+                                <td rowSpan={schemeRows.length}>
+                                  <strong>{n}</strong>
+                                </td>
+                              )}
+                              <td>{label}</td>
+                              <td>{run.result?.name ?? "—"}</td>
+                              <td>{run.result?.distance_km != null ? `${Number(run.result.distance_km).toFixed(4)} km` : "—"}</td>
+                              <td>{match === true ? "Yes" : match === false ? "No" : "—"}</td>
+                              <td>
+                                {acc?.poi_distance_km != null ? `${acc.poi_distance_km.toFixed(4)} km` : "—"}
+                              </td>
+                            </tr>
+                          );
+                        });
                       })}
                     </tbody>
                   </table>
                 </div>
 
-                {/* Relative error bar chart */}
-                {accuracyData.length > 0 && (
+                {accuracyLineData.length > 0 && (
                   <div className="stats-accuracy-chart">
-                    <p className="stats-accuracy-chart-label">Relative distance error vs plaintext ground truth</p>
                     <ResponsiveContainer width="100%" height={220}>
-                      <BarChart
-                        data={accuracyData}
-                        margin={{ top: 8, right: 16, left: 0, bottom: 48 }}
-                        barCategoryGap="35%"
-                      >
+                      <LineChart data={accuracyLineData} margin={{ top: 8, right: 16, left: 0, bottom: 24 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="rgba(28,105,115,0.1)" />
                         <XAxis
-                          dataKey="name"
+                          dataKey="N"
+                          label={{ value: "N candidates", position: "insideBottom", offset: -12, fontSize: 11, fill: "#6b655d" }}
                           tick={{ fontSize: 11, fill: "#6b655d" }}
-                          angle={-30}
-                          textAnchor="end"
-                          interval={0}
                         />
                         <YAxis
                           tick={{ fontSize: 11, fill: "#6b655d" }}
-                          tickFormatter={(v) => `${v}%`}
+                          tickFormatter={(v) => `${v} km`}
                           domain={[0, "auto"]}
                         />
                         <Tooltip
-                          formatter={(v) => [`${v} %`, "Relative error"]}
+                          formatter={(v, name) => [`${v} km`, name]}
                           contentStyle={{ borderRadius: 10, fontSize: 12 }}
                         />
-                        <Bar dataKey="Relative error (%)" radius={[4, 4, 0, 0]}>
-                          {accuracyData.map((entry, i) => (
-                            <Cell
-                              key={i}
-                              fill={
-                                entry.match === false ? "#c94040"
-                                : entry["Relative error (%)"] > 5 ? "#e06b2d"
-                                : "#1c6973"
-                              }
-                            />
-                          ))}
-                        </Bar>
-                      </BarChart>
+                        <Legend wrapperStyle={{ fontSize: 12 }} />
+                        <Line type="monotone" dataKey="Concrete" stroke="#2563eb" strokeWidth={2} dot={{ r: 5 }} connectNulls={false} />
+                        <Line type="monotone" dataKey="OpenFHE SS" stroke="#e11d48" strokeWidth={2} strokeDasharray="5 3" dot={{ r: 5 }} connectNulls={false} />
+                      </LineChart>
                     </ResponsiveContainer>
-                    <p className="stats-hint" style={{ textAlign: "center" }}>
-                      Green = correct POI, orange = small error (&gt;5%), red = wrong POI returned
-                    </p>
                   </div>
                 )}
               </div>
             )}
 
-            {/* Charts */}
             {successRuns.length > 0 && (
               <div className="stats-charts-grid">
-
-                {/* Phase breakdown stacked bar */}
-                <div className="poi-card stats-chart-card">
-                  <div className="poi-card-header">
-                    <h3>Time Breakdown by Phase</h3>
-                    <p>Encrypt · Server eval · Decrypt · Other client overhead (stacked).</p>
-                  </div>
-                  <ResponsiveContainer width="100%" height={320}>
-                    <BarChart data={phaseData} margin={{ top: 8, right: 16, left: 0, bottom: 72 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(28,105,115,0.1)" />
-                      <XAxis
-                        dataKey="name"
-                        tick={{ fontSize: 11, fill: "#6b655d" }}
-                        angle={-35}
-                        textAnchor="end"
-                        interval={0}
-                      />
-                      <YAxis
-                        tick={{ fontSize: 11, fill: "#6b655d" }}
-                        tickFormatter={(v) =>
-                          v >= 60000 ? `${(v / 60000).toFixed(0)}min`
-                          : v >= 1000 ? `${(v / 1000).toFixed(0)}s`
-                          : `${v}ms`
-                        }
-                      />
-                      <Tooltip
-                        formatter={(v, name) => [fmtMs(v), name]}
-                        contentStyle={{ borderRadius: 10, fontSize: 12 }}
-                      />
-                      <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
-                      <Bar dataKey="Encrypt" stackId="a" fill="#1c6973" />
-                      <Bar dataKey="Server eval" stackId="a" fill="#5ba3aa" />
-                      <Bar dataKey="Decrypt" stackId="a" fill="#e89a5d" />
-                      <Bar dataKey="Other" stackId="a" fill="#d0cbc3" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-
-                {/* Communication overhead */}
-                {sizeData.length > 0 && (
+                {concretePhaseLineData.length > 0 && (
                   <div className="poi-card stats-chart-card">
                     <div className="poi-card-header">
-                      <h3>Communication Overhead</h3>
-                      <p>Bytes sent to server per query: ciphertext + evaluation keys.</p>
+                      <h3>Time Breakdown — Concrete</h3>
                     </div>
                     <ResponsiveContainer width="100%" height={320}>
-                      <BarChart data={sizeData} margin={{ top: 8, right: 16, left: 0, bottom: 72 }}>
+                      <LineChart data={concretePhaseLineData} margin={{ top: 8, right: 16, left: 0, bottom: 48 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="rgba(28,105,115,0.1)" />
-                        <XAxis
-                          dataKey="name"
-                          tick={{ fontSize: 11, fill: "#6b655d" }}
-                          angle={-35}
-                          textAnchor="end"
-                          interval={0}
-                        />
-                        <YAxis
-                          tick={{ fontSize: 11, fill: "#6b655d" }}
-                          tickFormatter={(v) =>
-                            v >= 1048576 ? `${(v / 1048576).toFixed(1)}MB`
-                            : v >= 1024 ? `${(v / 1024).toFixed(0)}KB`
-                            : `${v}B`
-                          }
-                        />
-                        <Tooltip
-                          formatter={(v, name) => [fmtBytes(v), name]}
-                          contentStyle={{ borderRadius: 10, fontSize: 12 }}
-                        />
+                        <XAxis dataKey="name" tick={{ fontSize: 11, fill: "#6b655d" }} angle={-30} textAnchor="end" interval={0} />
+                        <YAxis tick={{ fontSize: 11, fill: "#6b655d" }} tickFormatter={fmtMsShort} />
+                        <Tooltip formatter={(v, name) => [fmtMs(v), name]} contentStyle={{ borderRadius: 10, fontSize: 12 }} />
                         <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
-                        <Bar dataKey="Ciphertext" stackId="b" fill="#1c6973" />
-                        <Bar dataKey="Keys" stackId="b" fill="#e89a5d" radius={[4, 4, 0, 0]} />
-                      </BarChart>
+                        <Line type="monotone" dataKey="Encrypt" stroke="#2563eb" strokeWidth={2} dot={{ r: 4 }} />
+                        <Line type="monotone" dataKey="Server eval" stroke="#e11d48" strokeWidth={2} dot={{ r: 4 }} />
+                        <Line type="monotone" dataKey="Decrypt" stroke="#d97706" strokeWidth={2} dot={{ r: 4 }} />
+                      </LineChart>
                     </ResponsiveContainer>
                   </div>
                 )}
 
-                {/* N vs latency (shown when ≥2 N-scaling runs exist across either scheme) */}
-                {(concreteNRuns.length >= 2 || openfheNRuns.length >= 2) && (
+                {openfhePhaseLineData.length > 0 && (
+                  <div className="poi-card stats-chart-card">
+                    <div className="poi-card-header">
+                      <h3>Time Breakdown — OpenFHE SS</h3>
+                    </div>
+                    <ResponsiveContainer width="100%" height={320}>
+                      <LineChart data={openfhePhaseLineData} margin={{ top: 8, right: 16, left: 0, bottom: 48 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(28,105,115,0.1)" />
+                        <XAxis dataKey="name" tick={{ fontSize: 11, fill: "#6b655d" }} angle={-30} textAnchor="end" interval={0} />
+                        <YAxis tick={{ fontSize: 11, fill: "#6b655d" }} tickFormatter={fmtMsShort} />
+                        <Tooltip formatter={(v, name) => [fmtMs(v), name]} contentStyle={{ borderRadius: 10, fontSize: 12 }} />
+                        <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
+                        <Line type="monotone" dataKey="Encrypt" stroke="#2563eb" strokeWidth={2} dot={{ r: 4 }} />
+                        <Line type="monotone" dataKey="Server eval" stroke="#e11d48" strokeWidth={2} dot={{ r: 4 }} />
+                        <Line type="monotone" dataKey="Decrypt" stroke="#d97706" strokeWidth={2} dot={{ r: 4 }} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+
+                {concreteSizeData.length > 0 && (
+                  <div className="poi-card stats-chart-card">
+                    <div className="poi-card-header">
+                      <h3>Communication Overhead — Concrete</h3>
+                    </div>
+                    <ResponsiveContainer width="100%" height={320}>
+                      <LineChart data={concreteSizeData} margin={{ top: 8, right: 16, left: 0, bottom: 48 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(28,105,115,0.1)" />
+                        <XAxis dataKey="name" tick={{ fontSize: 11, fill: "#6b655d" }} angle={-30} textAnchor="end" interval={0} />
+                        <YAxis tick={{ fontSize: 11, fill: "#6b655d" }} tickFormatter={fmtBytesShort} />
+                        <Tooltip formatter={(v, name) => [fmtBytes(v), name]} contentStyle={{ borderRadius: 10, fontSize: 12 }} />
+                        <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
+                        <Line type="monotone" dataKey="Ciphertext" stroke="#1c6973" strokeWidth={2} dot={{ r: 4 }} />
+                        <Line type="monotone" dataKey="Keys" stroke="#e89a5d" strokeWidth={2} dot={{ r: 4 }} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+
+                {openfheSizeData.length > 0 && (
+                  <div className="poi-card stats-chart-card">
+                    <div className="poi-card-header">
+                      <h3>Communication Overhead — OpenFHE SS</h3>
+                    </div>
+                    <ResponsiveContainer width="100%" height={320}>
+                      <LineChart data={openfheSizeData} margin={{ top: 8, right: 16, left: 0, bottom: 48 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(28,105,115,0.1)" />
+                        <XAxis dataKey="name" tick={{ fontSize: 11, fill: "#6b655d" }} angle={-30} textAnchor="end" interval={0} />
+                        <YAxis tick={{ fontSize: 11, fill: "#6b655d" }} tickFormatter={fmtBytesShort} />
+                        <Tooltip formatter={(v, name) => [fmtBytes(v), name]} contentStyle={{ borderRadius: 10, fontSize: 12 }} />
+                        <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
+                        <Line type="monotone" dataKey="Ciphertext" stroke="#1c6973" strokeWidth={2} dot={{ r: 4 }} />
+                        <Line type="monotone" dataKey="Keys" stroke="#e89a5d" strokeWidth={2} dot={{ r: 4 }} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+
+                {lineData.length >= 1 && (concreteNRuns.length >= 1 || openfheNRuns.length >= 1) && (
                   <div className="poi-card stats-chart-card">
                     <div className="poi-card-header">
                       <h3>N vs Latency</h3>
-                      <p>Client-side total latency as the number of candidate POIs grows.</p>
                     </div>
                     <ResponsiveContainer width="100%" height={320}>
                       <LineChart data={lineData} margin={{ top: 8, right: 16, left: 0, bottom: 24 }}>
@@ -670,18 +662,8 @@ export default function StatisticsPage() {
                           label={{ value: "N candidates", position: "insideBottom", offset: -12, fontSize: 11, fill: "#6b655d" }}
                           tick={{ fontSize: 11, fill: "#6b655d" }}
                         />
-                        <YAxis
-                          tick={{ fontSize: 11, fill: "#6b655d" }}
-                          tickFormatter={(v) =>
-                            v >= 60000 ? `${(v / 60000).toFixed(0)}min`
-                            : v >= 1000 ? `${(v / 1000).toFixed(0)}s`
-                            : `${v}ms`
-                          }
-                        />
-                        <Tooltip
-                          formatter={(v, name) => [fmtMs(v), name]}
-                          contentStyle={{ borderRadius: 10, fontSize: 12 }}
-                        />
+                        <YAxis tick={{ fontSize: 11, fill: "#6b655d" }} tickFormatter={fmtMsShort} />
+                        <Tooltip formatter={(v, name) => [fmtMs(v), name]} contentStyle={{ borderRadius: 10, fontSize: 12 }} />
                         <Legend wrapperStyle={{ fontSize: 12 }} />
                         {concreteNRuns.length >= 1 && (
                           <Line type="monotone" dataKey="Concrete total" stroke="#1c6973" strokeWidth={2} dot={{ r: 4 }} />
@@ -695,26 +677,14 @@ export default function StatisticsPage() {
                 )}
               </div>
             )}
-            {/* ================================================================
-                PERFORMANCE SIMULATION SECTION
-            ================================================================ */}
+
             <div className="stats-sim-divider">
               <span>Performance Simulation</span>
             </div>
 
-            {/* Simulation trigger card */}
             <div className="poi-card stats-section">
               <div className="poi-card-header">
                 <h3>Compute Performance</h3>
-                <p>
-                  Runs each FHE scheme over <strong>10 simulated user locations × 6 categories</strong>,
-                  comparing results against plaintext ground truth.
-                  Computes Top-1 accuracy, mean distance error, RMSE, and relative error per scheme and category.
-                </p>
-                <p className="stats-hint">
-                  Estimated time: Concrete ~5–60 min · OpenFHE SS ~30 min.
-                  Runs are sequential to keep memory usage low. Results persist across container restarts.
-                </p>
               </div>
 
               <button
@@ -730,12 +700,10 @@ export default function StatisticsPage() {
               {simError && <div className="poi-alert poi-alert-error" style={{ marginTop: 12 }}>{simError}</div>}
             </div>
 
-            {/* Simulation history browser */}
             {simHistory.length > 0 && (
               <div className="poi-card stats-section">
                 <div className="poi-card-header">
                   <h3>Simulation History</h3>
-                  <p>Click a past session to view its accuracy results.</p>
                 </div>
                 <div className="stats-history-scroll">
                   {simHistory.map((s) => (
@@ -756,7 +724,6 @@ export default function StatisticsPage() {
               </div>
             )}
 
-            {/* Simulation results */}
             {simSession?.summary && <SimulationResults session={simSession} />}
           </div>
         </main>
@@ -765,23 +732,18 @@ export default function StatisticsPage() {
   );
 }
 
-// ---------------------------------------------------------------------------
-// SimulationResults — rendered below the main page when simulation data exists
-// ---------------------------------------------------------------------------
 const SIM_SCHEME_LABELS = { concrete: "Concrete PBS", openfhe_ss: "OpenFHE SS" };
 const SIM_SCHEME_COLORS = { concrete: "#1c6973", openfhe_ss: "#e06b2d" };
 
 function SimulationResults({ session }) {
-  const { summary, n_test_points, timestamp, categories = [], schemes = [] } = session;
+  const { summary, timestamp, categories = [], schemes = [] } = session;
 
-  // Overall summary table rows
   const summaryRows = schemes.map((s) => {
     const d = summary[s] || {};
     return { scheme: s, ...d };
   });
 
-  // Per-category accuracy chart data — one entry per category
-  const catAccData = (categories.length ? categories : ["hospital","school","university","hotel","clinic","bank"])
+  const catAccData = (categories.length ? categories : ["hospital", "school", "stationery", "post_office", "cosmetics", "gallery"])
     .map((cat) => {
       const entry = { category: cat };
       schemes.forEach((s) => {
@@ -791,12 +753,11 @@ function SimulationResults({ session }) {
       return entry;
     });
 
-  // Per-category mean distance error chart data
-  const catErrData = (categories.length ? categories : ["hospital","school","university","hotel","clinic","bank"])
+  const catErrData = (categories.length ? categories : ["hospital", "school", "stationery", "post_office", "cosmetics", "gallery"])
     .map((cat) => {
       const entry = { category: cat };
       schemes.forEach((s) => {
-        const err = summary[s]?.per_category?.[cat]?.mean_distance_error_km;
+        const err = summary[s]?.per_category?.[cat]?.mean_poi_distance_km;
         entry[SIM_SCHEME_LABELS[s] || s] = err != null ? +err.toFixed(4) : null;
       });
       return entry;
@@ -804,28 +765,22 @@ function SimulationResults({ session }) {
 
   return (
     <>
-      {/* Overall summary table */}
       <div className="poi-card stats-section">
         <div className="poi-card-header">
           <h3>Overall Accuracy Summary</h3>
-          <p>
-            Aggregated over {n_test_points} test points × {(categories.length || 6)} categories
-            = {n_test_points * (categories.length || 6)} queries per scheme.
-            {timestamp && (
-              <span className="stats-session-badge">{fmtTimestamp(timestamp)}</span>
-            )}
-          </p>
+          {timestamp && (
+            <span className="stats-session-badge">{fmtTimestamp(timestamp)}</span>
+          )}
         </div>
-        <div className="poi-table-wrap">
-          <table className="poi-table stats-metrics-table">
+        <div className="stats-plain-wrap">
+          <table className="stats-plain-table">
             <thead>
               <tr>
                 <th>Scheme</th>
-                <th title="Queries returning the same POI as plaintext">Top-1 accuracy</th>
-                <th title="Mean |d_HE − d_plaintext|">Mean dist. error</th>
-                <th title="√(mean(|d_HE − d_pt|²)) — standard paper metric">RMSE</th>
-                <th title="Worst-case absolute error">Max error</th>
-                <th title="Mean (|d_HE − d_pt| / d_pt) × 100">Mean rel. error</th>
+                <th>Top-1 accuracy</th>
+                <th>Mean dist. A→B</th>
+                <th>RMSE</th>
+                <th>Max dist. A→B</th>
                 <th>Runs</th>
                 <th>Errors</th>
               </tr>
@@ -834,13 +789,12 @@ function SimulationResults({ session }) {
               {summaryRows.map((r) => (
                 <tr key={r.scheme}>
                   <td><strong>{SIM_SCHEME_LABELS[r.scheme] || r.scheme}</strong></td>
-                  <td className={r.top1_accuracy != null && r.top1_accuracy < 0.9 ? "stats-error-cell" : "stats-highlight-cell"}>
+                  <td>
                     {r.top1_accuracy != null ? `${(r.top1_accuracy * 100).toFixed(1)} %` : "—"}
                   </td>
-                  <td>{r.mean_distance_error_km != null ? `${r.mean_distance_error_km.toFixed(4)} km` : "—"}</td>
-                  <td>{r.rmse_distance_error_km != null ? `${r.rmse_distance_error_km.toFixed(4)} km` : "—"}</td>
-                  <td>{r.max_distance_error_km != null ? `${r.max_distance_error_km.toFixed(4)} km` : "—"}</td>
-                  <td>{r.mean_relative_error_pct != null ? `${r.mean_relative_error_pct.toFixed(2)} %` : "—"}</td>
+                  <td>{r.mean_poi_distance_km != null ? `${r.mean_poi_distance_km.toFixed(4)} km` : "—"}</td>
+                  <td>{r.rmse_poi_distance_km != null ? `${r.rmse_poi_distance_km.toFixed(4)} km` : "—"}</td>
+                  <td>{r.max_poi_distance_km != null ? `${r.max_poi_distance_km.toFixed(4)} km` : "—"}</td>
                   <td>{r.total ?? "—"}</td>
                   <td>{r.error_count ?? "—"}</td>
                 </tr>
@@ -850,35 +804,33 @@ function SimulationResults({ session }) {
         </div>
       </div>
 
-      {/* Per-category breakdown table */}
       <div className="poi-card stats-section">
         <div className="poi-card-header">
           <h3>Per-Category Accuracy</h3>
-          <p>Top-1 accuracy and mean distance error broken down by POI category.</p>
         </div>
-        <div className="poi-table-wrap">
-          <table className="poi-table stats-metrics-table">
+        <div className="stats-plain-wrap">
+          <table className="stats-plain-table">
             <thead>
               <tr>
                 <th>Category</th>
                 {schemes.flatMap((s) => [
-                  <th key={`${s}-acc`}>{(SIM_SCHEME_LABELS[s] || s)} top-1</th>,
-                  <th key={`${s}-err`}>{(SIM_SCHEME_LABELS[s] || s)} mean err</th>,
+                  <th key={`${s}-acc`}>{SIM_SCHEME_LABELS[s] || s} top-1</th>,
+                  <th key={`${s}-err`}>{SIM_SCHEME_LABELS[s] || s} mean dist.</th>,
                 ])}
               </tr>
             </thead>
             <tbody>
-              {(categories.length ? categories : ["hospital","school","university","hotel","clinic","bank"]).map((cat) => (
+              {(categories.length ? categories : ["hospital", "school", "stationery", "post_office", "cosmetics", "gallery"]).map((cat) => (
                 <tr key={cat}>
                   <td><strong>{cat}</strong></td>
                   {schemes.flatMap((s) => {
                     const cd = summary[s]?.per_category?.[cat] || {};
                     return [
-                      <td key={`${s}-acc`} className={cd.top1_accuracy != null && cd.top1_accuracy < 0.9 ? "stats-error-cell" : ""}>
+                      <td key={`${s}-acc`}>
                         {cd.top1_accuracy != null ? `${(cd.top1_accuracy * 100).toFixed(0)} %` : "—"}
                       </td>,
                       <td key={`${s}-err`}>
-                        {cd.mean_distance_error_km != null ? `${cd.mean_distance_error_km.toFixed(4)} km` : "—"}
+                        {cd.mean_poi_distance_km != null ? `${cd.mean_poi_distance_km.toFixed(4)} km` : "—"}
                       </td>,
                     ];
                   })}
@@ -889,45 +841,40 @@ function SimulationResults({ session }) {
         </div>
       </div>
 
-      {/* Charts */}
       <div className="stats-charts-grid">
-        {/* Top-1 accuracy per category */}
         <div className="poi-card stats-chart-card">
           <div className="poi-card-header">
             <h3>Top-1 Accuracy by Category</h3>
-            <p>Percentage of test points where the FHE scheme returned the correct nearest POI.</p>
           </div>
           <ResponsiveContainer width="100%" height={320}>
-            <BarChart data={catAccData} margin={{ top: 8, right: 16, left: 0, bottom: 48 }}>
+            <LineChart data={catAccData} margin={{ top: 8, right: 16, left: 0, bottom: 48 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(28,105,115,0.1)" />
               <XAxis dataKey="category" tick={{ fontSize: 11, fill: "#6b655d" }} angle={-30} textAnchor="end" interval={0} />
               <YAxis tick={{ fontSize: 11, fill: "#6b655d" }} tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
               <Tooltip formatter={(v) => [`${v} %`]} contentStyle={{ borderRadius: 10, fontSize: 12 }} />
               <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
               {schemes.map((s) => (
-                <Bar key={s} dataKey={SIM_SCHEME_LABELS[s] || s} fill={SIM_SCHEME_COLORS[s] || "#888"} radius={[4, 4, 0, 0]} />
+                <Line key={s} type="monotone" dataKey={SIM_SCHEME_LABELS[s] || s} stroke={SIM_SCHEME_COLORS[s] || "#888"} strokeWidth={2} dot={{ r: 4 }} />
               ))}
-            </BarChart>
+            </LineChart>
           </ResponsiveContainer>
         </div>
 
-        {/* Mean distance error per category */}
         <div className="poi-card stats-chart-card">
           <div className="poi-card-header">
-            <h3>Mean Distance Error by Category</h3>
-            <p>Mean |d_HE − d_plaintext| in km — lower is more accurate.</p>
+            <h3>Mean Distance A→B by Category</h3>
           </div>
           <ResponsiveContainer width="100%" height={320}>
-            <BarChart data={catErrData} margin={{ top: 8, right: 16, left: 0, bottom: 48 }}>
+            <LineChart data={catErrData} margin={{ top: 8, right: 16, left: 0, bottom: 48 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(28,105,115,0.1)" />
               <XAxis dataKey="category" tick={{ fontSize: 11, fill: "#6b655d" }} angle={-30} textAnchor="end" interval={0} />
               <YAxis tick={{ fontSize: 11, fill: "#6b655d" }} tickFormatter={(v) => `${v} km`} />
               <Tooltip formatter={(v) => [`${v} km`]} contentStyle={{ borderRadius: 10, fontSize: 12 }} />
               <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
               {schemes.map((s) => (
-                <Bar key={s} dataKey={SIM_SCHEME_LABELS[s] || s} fill={SIM_SCHEME_COLORS[s] || "#888"} radius={[4, 4, 0, 0]} />
+                <Line key={s} type="monotone" dataKey={SIM_SCHEME_LABELS[s] || s} stroke={SIM_SCHEME_COLORS[s] || "#888"} strokeWidth={2} dot={{ r: 4 }} />
               ))}
-            </BarChart>
+            </LineChart>
           </ResponsiveContainer>
         </div>
       </div>

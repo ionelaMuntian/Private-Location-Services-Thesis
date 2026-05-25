@@ -11,8 +11,8 @@ from .quantization import (
     quantize_metric_coordinate,
 )
 
-# 3 km quantization — keeps dist² ≤ 128 (8-bit PBS, LUT=256 entries).
-quant_config = QuantizationConfig(scale_divisor=3000)
+# 2.2 km quantization — keeps dist² ≤ 242 (8-bit PBS, LUT=256 entries).
+quant_config = QuantizationConfig(scale_divisor=2200)
 
 # Reference subtracted from full EPSG:3857 POI coordinates to keep
 # quantized values small (0–8 range) for the FHE circuit.

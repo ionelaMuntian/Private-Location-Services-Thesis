@@ -17,13 +17,9 @@ from .schemas import (
 repository = CompanyRepository()
 
 # Tolerance for CKKS approximation noise when interpreting the sign of a margin.
-# After COORD_SCALE=100 normalization, smallest radius² is (100m/100)² = 1.0,
-# so 1e-3 is well below any meaningful margin value.
 EPSILON = 1e-3
-# CKKS approximation error grows with value magnitude. Dividing by COORD_SCALE
-# keeps numbers small enough (~10^3 instead of ~10^6) so that after squaring
-# (~10^6 instead of ~10^12) the noise stays well below any reasonable radius².
-# All comparisons are scale-invariant (dividing both sides preserves the sign).
+# All encrypted coordinates are divided by COORD_SCALE before encryption so that
+# the plaintext values stay in a comfortable range for CKKS (≤ ~10^3 instead of ~10^6).
 COORD_SCALE = 100.0
 
 
@@ -46,11 +42,15 @@ def _compute_plaintext_compliance(location_input: dict, company: dict) -> dict:
     office_lon    = float(company["office_lon_m"])
     office_radius = float(company["office_radius_m"])
 
-    home_dist_sq   = (current_lat - home_lat) ** 2 + (current_lon - home_lon) ** 2
-    office_dist_sq = (current_lat - office_lat) ** 2 + (current_lon - office_lon) ** 2
-
-    plaintext_at_home   = home_dist_sq   <= home_radius ** 2
-    plaintext_at_office = office_dist_sq <= office_radius ** 2
+    # Bounding-box check mirrors the encrypted computation (all EvalSub, no EvalMult).
+    plaintext_at_home = (
+        home_lat - home_radius <= current_lat <= home_lat + home_radius
+        and home_lon - home_radius <= current_lon <= home_lon + home_radius
+    )
+    plaintext_at_office = (
+        office_lat - office_radius <= current_lat <= office_lat + office_radius
+        and office_lon - office_radius <= current_lon <= office_lon + office_radius
+    )
 
     north = company.get("country_north_m")
     south = company.get("country_south_m")
@@ -326,43 +326,40 @@ class CompanyService:
                 ),
             )
 
-        encrypted_current_lat = openfhe_multiparty_runtime.encrypt_scalar(
-            location_input["current_lat_m"] / COORD_SCALE
-        )
-        encrypted_current_lon = openfhe_multiparty_runtime.encrypt_scalar(
-            location_input["current_lon_m"] / COORD_SCALE
-        )
-        encrypted_home_lat = openfhe_multiparty_runtime.encrypt_scalar(
-            location_input["home_lat_m"] / COORD_SCALE
-        )
-        encrypted_home_lon = openfhe_multiparty_runtime.encrypt_scalar(
-            location_input["home_lon_m"] / COORD_SCALE
-        )
-        encrypted_home_radius = openfhe_multiparty_runtime.encrypt_scalar(
-            location_input["home_radius_m"] / COORD_SCALE
-        )
+        enc = openfhe_multiparty_runtime.encrypt_scalar
 
-        encrypted_office_lat = openfhe_multiparty_runtime.encrypt_scalar(
-            company["office_lat_m"] / COORD_SCALE
-        )
-        encrypted_office_lon = openfhe_multiparty_runtime.encrypt_scalar(
-            company["office_lon_m"] / COORD_SCALE
-        )
-        encrypted_office_radius = openfhe_multiparty_runtime.encrypt_scalar(
-            company["office_radius_m"] / COORD_SCALE
-        )
-        encrypted_country_north = openfhe_multiparty_runtime.encrypt_scalar(
-            (company["country_north_m"] or 0.0) / COORD_SCALE
-        )
-        encrypted_country_south = openfhe_multiparty_runtime.encrypt_scalar(
-            (company["country_south_m"] or 0.0) / COORD_SCALE
-        )
-        encrypted_country_east = openfhe_multiparty_runtime.encrypt_scalar(
-            (company["country_east_m"] or 0.0) / COORD_SCALE
-        )
-        encrypted_country_west = openfhe_multiparty_runtime.encrypt_scalar(
-            (company["country_west_m"] or 0.0) / COORD_SCALE
-        )
+        encrypted_current_lat = enc(location_input["current_lat_m"] / COORD_SCALE)
+        encrypted_current_lon = enc(location_input["current_lon_m"] / COORD_SCALE)
+
+        # Encrypt home and office as bounding-box corners so the service provider
+        # can evaluate compliance with EvalSub only (no EvalMult / no level reduction).
+        home_lat_sc = location_input["home_lat_m"] / COORD_SCALE
+        home_lon_sc = location_input["home_lon_m"] / COORD_SCALE
+        home_r_sc   = location_input["home_radius_m"] / COORD_SCALE
+
+        encrypted_home_north = enc(home_lat_sc + home_r_sc)
+        encrypted_home_south = enc(home_lat_sc - home_r_sc)
+        encrypted_home_east  = enc(home_lon_sc + home_r_sc)
+        encrypted_home_west  = enc(home_lon_sc - home_r_sc)
+
+        # Also encrypt raw values for the audit record in the compliance-jobs table.
+        encrypted_home_lat    = enc(home_lat_sc)
+        encrypted_home_lon    = enc(home_lon_sc)
+        encrypted_home_radius = enc(home_r_sc)
+
+        office_lat_sc = company["office_lat_m"] / COORD_SCALE
+        office_lon_sc = company["office_lon_m"] / COORD_SCALE
+        office_r_sc   = company["office_radius_m"] / COORD_SCALE
+
+        encrypted_office_north = enc(office_lat_sc + office_r_sc)
+        encrypted_office_south = enc(office_lat_sc - office_r_sc)
+        encrypted_office_east  = enc(office_lon_sc + office_r_sc)
+        encrypted_office_west  = enc(office_lon_sc - office_r_sc)
+
+        encrypted_country_north = enc((company["country_north_m"] or 0.0) / COORD_SCALE)
+        encrypted_country_south = enc((company["country_south_m"] or 0.0) / COORD_SCALE)
+        encrypted_country_east  = enc((company["country_east_m"]  or 0.0) / COORD_SCALE)
+        encrypted_country_west  = enc((company["country_west_m"]  or 0.0) / COORD_SCALE)
 
         service_payload = {
             "metadata": {
@@ -371,16 +368,18 @@ class CompanyService:
             },
             "encrypted_current_lat": encrypted_current_lat,
             "encrypted_current_lon": encrypted_current_lon,
-            "encrypted_home_lat": encrypted_home_lat,
-            "encrypted_home_lon": encrypted_home_lon,
-            "encrypted_home_radius": encrypted_home_radius,
-            "encrypted_office_lat": encrypted_office_lat,
-            "encrypted_office_lon": encrypted_office_lon,
-            "encrypted_office_radius": encrypted_office_radius,
+            "encrypted_home_north":  encrypted_home_north,
+            "encrypted_home_south":  encrypted_home_south,
+            "encrypted_home_east":   encrypted_home_east,
+            "encrypted_home_west":   encrypted_home_west,
+            "encrypted_office_north": encrypted_office_north,
+            "encrypted_office_south": encrypted_office_south,
+            "encrypted_office_east":  encrypted_office_east,
+            "encrypted_office_west":  encrypted_office_west,
             "encrypted_country_north": encrypted_country_north,
             "encrypted_country_south": encrypted_country_south,
-            "encrypted_country_east": encrypted_country_east,
-            "encrypted_country_west": encrypted_country_west,
+            "encrypted_country_east":  encrypted_country_east,
+            "encrypted_country_west":  encrypted_country_west,
         }
 
         encrypted_margins = await post_to_service_provider(
@@ -394,100 +393,109 @@ class CompanyService:
                 "company_id": company_id,
                 "encrypted_current_lat": encrypted_current_lat,
                 "encrypted_current_lon": encrypted_current_lon,
-                "encrypted_home_lat": encrypted_home_lat,
-                "encrypted_home_lon": encrypted_home_lon,
+                "encrypted_home_lat":    encrypted_home_lat,
+                "encrypted_home_lon":    encrypted_home_lon,
                 "encrypted_home_radius": encrypted_home_radius,
-                **encrypted_margins,
+                # Store north margin as the representative home/office ciphertext.
+                "encrypted_home_margin":   encrypted_margins["encrypted_home_north_margin"],
+                "encrypted_office_margin": encrypted_margins["encrypted_office_north_margin"],
+                "encrypted_country_north_margin": encrypted_margins["encrypted_country_north_margin"],
+                "encrypted_country_south_margin": encrypted_margins["encrypted_country_south_margin"],
+                "encrypted_country_east_margin":  encrypted_margins["encrypted_country_east_margin"],
+                "encrypted_country_west_margin":  encrypted_margins["encrypted_country_west_margin"],
             },
             company=company,
         )
 
         job_id = int(job["id"])
 
-        user_partials = {
-            "user_partial_home_margin": openfhe_multiparty_runtime.user_partial_decrypt_scalar(
-                encrypted_margins["encrypted_home_margin"]
-            ),
-            "user_partial_office_margin": openfhe_multiparty_runtime.user_partial_decrypt_scalar(
-                encrypted_margins["encrypted_office_margin"]
-            ),
-            "user_partial_country_north_margin": openfhe_multiparty_runtime.user_partial_decrypt_scalar(
-                encrypted_margins["encrypted_country_north_margin"]
-            ),
-            "user_partial_country_south_margin": openfhe_multiparty_runtime.user_partial_decrypt_scalar(
-                encrypted_margins["encrypted_country_south_margin"]
-            ),
-            "user_partial_country_east_margin": openfhe_multiparty_runtime.user_partial_decrypt_scalar(
-                encrypted_margins["encrypted_country_east_margin"]
-            ),
-            "user_partial_country_west_margin": openfhe_multiparty_runtime.user_partial_decrypt_scalar(
-                encrypted_margins["encrypted_country_west_margin"]
-            ),
-        }
+        up = openfhe_multiparty_runtime.user_partial_decrypt_scalar
+        cp = openfhe_multiparty_runtime.company_partial_decrypt_scalar
+        fuse = openfhe_multiparty_runtime.company_fuse_scalar
+
+        # Compute all 12 partial decryptions (home×4, office×4, country×4).
+        up_home_north = up(encrypted_margins["encrypted_home_north_margin"])
+        up_home_south = up(encrypted_margins["encrypted_home_south_margin"])
+        up_home_east  = up(encrypted_margins["encrypted_home_east_margin"])
+        up_home_west  = up(encrypted_margins["encrypted_home_west_margin"])
+
+        up_office_north = up(encrypted_margins["encrypted_office_north_margin"])
+        up_office_south = up(encrypted_margins["encrypted_office_south_margin"])
+        up_office_east  = up(encrypted_margins["encrypted_office_east_margin"])
+        up_office_west  = up(encrypted_margins["encrypted_office_west_margin"])
+
+        up_country_north = up(encrypted_margins["encrypted_country_north_margin"])
+        up_country_south = up(encrypted_margins["encrypted_country_south_margin"])
+        up_country_east  = up(encrypted_margins["encrypted_country_east_margin"])
+        up_country_west  = up(encrypted_margins["encrypted_country_west_margin"])
 
         repository.store_user_partials(
             job_id=job_id,
             user_id=employee_user_id,
-            partials=user_partials,
+            partials={
+                "user_partial_home_margin":              up_home_north,
+                "user_partial_office_margin":            up_office_north,
+                "user_partial_country_north_margin":     up_country_north,
+                "user_partial_country_south_margin":     up_country_south,
+                "user_partial_country_east_margin":      up_country_east,
+                "user_partial_country_west_margin":      up_country_west,
+            },
         )
 
-        company_partial_home = openfhe_multiparty_runtime.company_partial_decrypt_scalar(
-            encrypted_margins["encrypted_home_margin"]
-        )
-        company_partial_office = openfhe_multiparty_runtime.company_partial_decrypt_scalar(
-            encrypted_margins["encrypted_office_margin"]
-        )
-        company_partial_north = openfhe_multiparty_runtime.company_partial_decrypt_scalar(
-            encrypted_margins["encrypted_country_north_margin"]
-        )
-        company_partial_south = openfhe_multiparty_runtime.company_partial_decrypt_scalar(
-            encrypted_margins["encrypted_country_south_margin"]
-        )
-        company_partial_east = openfhe_multiparty_runtime.company_partial_decrypt_scalar(
-            encrypted_margins["encrypted_country_east_margin"]
-        )
-        company_partial_west = openfhe_multiparty_runtime.company_partial_decrypt_scalar(
-            encrypted_margins["encrypted_country_west_margin"]
-        )
+        cp_home_north = cp(encrypted_margins["encrypted_home_north_margin"])
+        cp_home_south = cp(encrypted_margins["encrypted_home_south_margin"])
+        cp_home_east  = cp(encrypted_margins["encrypted_home_east_margin"])
+        cp_home_west  = cp(encrypted_margins["encrypted_home_west_margin"])
 
-        home_margin = openfhe_multiparty_runtime.company_fuse_scalar(
-            user_partials["user_partial_home_margin"],
-            company_partial_home,
-        )
-        office_margin = openfhe_multiparty_runtime.company_fuse_scalar(
-            user_partials["user_partial_office_margin"],
-            company_partial_office,
-        )
-        north_margin = openfhe_multiparty_runtime.company_fuse_scalar(
-            user_partials["user_partial_country_north_margin"],
-            company_partial_north,
-        )
-        south_margin = openfhe_multiparty_runtime.company_fuse_scalar(
-            user_partials["user_partial_country_south_margin"],
-            company_partial_south,
-        )
-        east_margin = openfhe_multiparty_runtime.company_fuse_scalar(
-            user_partials["user_partial_country_east_margin"],
-            company_partial_east,
-        )
-        west_margin = openfhe_multiparty_runtime.company_fuse_scalar(
-            user_partials["user_partial_country_west_margin"],
-            company_partial_west,
-        )
+        cp_office_north = cp(encrypted_margins["encrypted_office_north_margin"])
+        cp_office_south = cp(encrypted_margins["encrypted_office_south_margin"])
+        cp_office_east  = cp(encrypted_margins["encrypted_office_east_margin"])
+        cp_office_west  = cp(encrypted_margins["encrypted_office_west_margin"])
+
+        cp_country_north = cp(encrypted_margins["encrypted_country_north_margin"])
+        cp_country_south = cp(encrypted_margins["encrypted_country_south_margin"])
+        cp_country_east  = cp(encrypted_margins["encrypted_country_east_margin"])
+        cp_country_west  = cp(encrypted_margins["encrypted_country_west_margin"])
+
+        # Fuse all 12 margins.
+        home_north_m = fuse(up_home_north, cp_home_north)
+        home_south_m = fuse(up_home_south, cp_home_south)
+        home_east_m  = fuse(up_home_east,  cp_home_east)
+        home_west_m  = fuse(up_home_west,  cp_home_west)
+
+        office_north_m = fuse(up_office_north, cp_office_north)
+        office_south_m = fuse(up_office_south, cp_office_south)
+        office_east_m  = fuse(up_office_east,  cp_office_east)
+        office_west_m  = fuse(up_office_west,  cp_office_west)
+
+        north_margin = fuse(up_country_north, cp_country_north)
+        south_margin = fuse(up_country_south, cp_country_south)
+        east_margin  = fuse(up_country_east,  cp_country_east)
+        west_margin  = fuse(up_country_west,  cp_country_west)
+
+        # Home/office: all four bbox margins must be ≥ 0 (inside the bounding box).
+        # Store the minimum as a single representative value.
+        home_margin   = min(home_north_m, home_south_m, home_east_m, home_west_m)
+        office_margin = min(office_north_m, office_south_m, office_east_m, office_west_m)
 
         print(
-            f"[Compliance] home_margin={home_margin:.6f} → at_home={_leq_zero(home_margin)} "
-            f"| office_margin={office_margin:.6f} → at_office={_leq_zero(office_margin)}",
+            f"[Compliance] home bbox mins: N={home_north_m:.3f} S={home_south_m:.3f} "
+            f"E={home_east_m:.3f} W={home_west_m:.3f} → at_home={_geq_zero(home_margin)}",
             flush=True,
         )
         print(
-            f"[Compliance] north={north_margin:.4f} south={south_margin:.4f} "
+            f"[Compliance] office bbox mins: N={office_north_m:.3f} S={office_south_m:.3f} "
+            f"E={office_east_m:.3f} W={office_west_m:.3f} → at_office={_geq_zero(office_margin)}",
+            flush=True,
+        )
+        print(
+            f"[Compliance] country: north={north_margin:.4f} south={south_margin:.4f} "
             f"east={east_margin:.4f} west={west_margin:.4f}",
             flush=True,
         )
 
-        final_at_home = _leq_zero(home_margin)
-        final_at_office = _leq_zero(office_margin)
+        final_at_home   = _geq_zero(home_margin)
+        final_at_office = _geq_zero(office_margin)
         final_in_country = (
             _geq_zero(north_margin)
             and _geq_zero(south_margin)
@@ -500,20 +508,20 @@ class CompanyService:
         result = repository.store_company_fusion_result(
             job_id=job_id,
             company_partials={
-                "company_partial_home_margin": company_partial_home,
-                "company_partial_office_margin": company_partial_office,
-                "company_partial_country_north_margin": company_partial_north,
-                "company_partial_country_south_margin": company_partial_south,
-                "company_partial_country_east_margin": company_partial_east,
-                "company_partial_country_west_margin": company_partial_west,
+                "company_partial_home_margin":              cp_home_north,
+                "company_partial_office_margin":            cp_office_north,
+                "company_partial_country_north_margin":     cp_country_north,
+                "company_partial_country_south_margin":     cp_country_south,
+                "company_partial_country_east_margin":      cp_country_east,
+                "company_partial_country_west_margin":      cp_country_west,
             },
             margins={
-                "home_margin": home_margin,
-                "office_margin": office_margin,
-                "country_north_margin": north_margin,
-                "country_south_margin": south_margin,
-                "country_east_margin": east_margin,
-                "country_west_margin": west_margin,
+                "home_margin":           home_margin,
+                "office_margin":         office_margin,
+                "country_north_margin":  north_margin,
+                "country_south_margin":  south_margin,
+                "country_east_margin":   east_margin,
+                "country_west_margin":   west_margin,
             },
             final_at_home=final_at_home,
             final_at_office=final_at_office,

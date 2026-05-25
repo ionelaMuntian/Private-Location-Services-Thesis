@@ -63,8 +63,18 @@ TEST_POINTS: list[dict] = [
 # Helpers
 # ---------------------------------------------------------------------------
 
+def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Great-circle distance in km between two WGS-84 points."""
+    R = 6371.0
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlambda = math.radians(lon2 - lon1)
+    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
+    return R * 2 * math.asin(math.sqrt(a))
+
+
 def _extract_top1(raw: dict) -> dict | None:
-    """Pull only {id, name, category, distance_km} from a nearest_k result."""
+    """Pull {id, name, category, latitude, longitude, distance_km} from a nearest_k result."""
     results = raw.get("results") or []
     if not results:
         return None
@@ -73,6 +83,8 @@ def _extract_top1(raw: dict) -> dict | None:
         "id": r.get("id"),
         "name": r.get("name"),
         "category": r.get("category"),
+        "latitude": r.get("latitude"),
+        "longitude": r.get("longitude"),
         "distance_km": r.get("distance_km"),
     }
 
@@ -94,7 +106,11 @@ def _extract_timing(raw: dict) -> dict:
 
 
 def _compute_accuracy(predicted: dict | None, ground_truth: dict | None) -> dict:
-    """Compute top-1 match, distance error, and relative error vs ground truth."""
+    """
+    Compute top-1 match and the geographic distance between the two returned POIs.
+    poi_distance_km is the haversine distance between POI A (plaintext) and
+    POI B (FHE result); 0.0 when both schemes returned the same POI.
+    """
     if not predicted or not ground_truth:
         return {}
 
@@ -103,12 +119,16 @@ def _compute_accuracy(predicted: dict | None, ground_truth: dict | None) -> dict
     if predicted.get("id") is not None and ground_truth.get("id") is not None:
         acc["top1_match"] = int(predicted["id"]) == int(ground_truth["id"])
 
-    pd = predicted.get("distance_km")
-    td = ground_truth.get("distance_km")
-    if pd is not None and td is not None and float(td) > 0:
-        err = abs(float(pd) - float(td))
-        acc["distance_error_km"] = round(err, 4)
-        acc["relative_error_pct"] = round(err / float(td) * 100, 2)
+    plat = predicted.get("latitude")
+    plon = predicted.get("longitude")
+    glat = ground_truth.get("latitude")
+    glon = ground_truth.get("longitude")
+
+    if plat is not None and plon is not None and glat is not None and glon is not None:
+        if acc.get("top1_match"):
+            acc["poi_distance_km"] = 0.0
+        else:
+            acc["poi_distance_km"] = round(_haversine_km(glat, glon, plat, plon), 4)
 
     return acc
 
@@ -126,15 +146,13 @@ def _build_summary(records: list[dict]) -> dict:
     """
     def _stats(recs: list[dict]) -> dict:
         top1 = [r["accuracy"]["top1_match"] for r in recs if "top1_match" in r.get("accuracy", {})]
-        d_err = [r["accuracy"]["distance_error_km"] for r in recs if "distance_error_km" in r.get("accuracy", {})]
-        r_err = [r["accuracy"]["relative_error_pct"] for r in recs if "relative_error_pct" in r.get("accuracy", {})]
+        d_err = [r["accuracy"]["poi_distance_km"] for r in recs if "poi_distance_km" in r.get("accuracy", {})]
         return {
             "total": len(recs),
             "top1_accuracy": round(sum(top1) / len(top1), 4) if top1 else None,
-            "mean_distance_error_km": round(sum(d_err) / len(d_err), 4) if d_err else None,
-            "max_distance_error_km": round(max(d_err), 4) if d_err else None,
-            "rmse_distance_error_km": round(math.sqrt(sum(e ** 2 for e in d_err) / len(d_err)), 4) if d_err else None,
-            "mean_relative_error_pct": round(sum(r_err) / len(r_err), 2) if r_err else None,
+            "mean_poi_distance_km": round(sum(d_err) / len(d_err), 4) if d_err else None,
+            "max_poi_distance_km": round(max(d_err), 4) if d_err else None,
+            "rmse_poi_distance_km": round(math.sqrt(sum(e ** 2 for e in d_err) / len(d_err)), 4) if d_err else None,
         }
 
     summary: dict = {}

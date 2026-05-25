@@ -13,14 +13,20 @@ const POLL_INTERVAL_MS = 5000;
 const MAX_POLL_ATTEMPTS = 60;
 
 const initialForm = {
-  // Home — somewhere near Cluj-Napoca center (Web Mercator, meters)
-  homeLatitude: 5900000,
-  homeLongitude: 2625000,
+  homeLatitude: 46.77,
+  homeLongitude: 23.59,
   homeRadius: 500,
-  // Current location — at UTCN office (Web Mercator, meters)
-  currentLatitude: 5901100,
-  currentLongitude: 2626008,
+  currentLatitude: 46.78,
+  currentLongitude: 23.59,
 };
+
+function degToMercatorLon(lon) {
+  return lon * 20037508.34 / 180;
+}
+
+function degToMercatorLat(lat) {
+  return Math.log(Math.tan((90 + lat) * Math.PI / 360)) * 20037508.34 / Math.PI;
+}
 
 export default function LocationSharingPage() {
   const navigate = useNavigate();
@@ -178,10 +184,10 @@ export default function LocationSharingPage() {
         LATEST_LOCATION_URL,
         {
           company_id: Number(company.id),
-          current_lat_m: Number(form.currentLatitude),
-          current_lon_m: Number(form.currentLongitude),
-          home_lat_m: Number(form.homeLatitude),
-          home_lon_m: Number(form.homeLongitude),
+          current_lat_m: degToMercatorLat(Number(form.currentLatitude)),
+          current_lon_m: degToMercatorLon(Number(form.currentLongitude)),
+          home_lat_m: degToMercatorLat(Number(form.homeLatitude)),
+          home_lon_m: degToMercatorLon(Number(form.homeLongitude)),
           home_radius_m: Number(form.homeRadius),
         },
         {
@@ -288,7 +294,7 @@ export default function LocationSharingPage() {
 
                   <div className="location-form-grid">
                     <label>
-                      Home Latitude (m)
+                      Home Latitude (°)
                       <input
                         type="number"
                         step="any"
@@ -300,7 +306,7 @@ export default function LocationSharingPage() {
                     </label>
 
                     <label>
-                      Home Longitude (m)
+                      Home Longitude (°)
                       <input
                         type="number"
                         step="any"
@@ -330,7 +336,7 @@ export default function LocationSharingPage() {
 
                   <div className="location-form-grid">
                     <label>
-                      Current Latitude (m)
+                      Current Latitude (°)
                       <input
                         type="number"
                         step="any"
@@ -342,7 +348,7 @@ export default function LocationSharingPage() {
                     </label>
 
                     <label>
-                      Current Longitude (m)
+                      Current Longitude (°)
                       <input
                         type="number"
                         step="any"
@@ -404,12 +410,12 @@ export default function LocationSharingPage() {
 
                     <div className="location-summary-row">
                       <span>Home Latitude</span>
-                      <strong>{savedData.homeLatitude}</strong>
+                      <strong>{savedData.homeLatitude}°</strong>
                     </div>
 
                     <div className="location-summary-row">
                       <span>Home Longitude</span>
-                      <strong>{savedData.homeLongitude}</strong>
+                      <strong>{savedData.homeLongitude}°</strong>
                     </div>
 
                     <div className="location-summary-row">
@@ -419,12 +425,12 @@ export default function LocationSharingPage() {
 
                     <div className="location-summary-row">
                       <span>Current Latitude</span>
-                      <strong>{savedData.currentLatitude}</strong>
+                      <strong>{savedData.currentLatitude}°</strong>
                     </div>
 
                     <div className="location-summary-row">
                       <span>Current Longitude</span>
-                      <strong>{savedData.currentLongitude}</strong>
+                      <strong>{savedData.currentLongitude}°</strong>
                     </div>
 
                     <div className="location-summary-row">

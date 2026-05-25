@@ -4,7 +4,6 @@ import axios from "axios";
 import "../styles/poi-search.css";
 
 const API_URL = "http://127.0.0.1:8000/client/poi/nearest-k";
-
 const REQUEST_TIMEOUT_MS = 1800000;
 
 const initialForm = {
@@ -23,7 +22,6 @@ function formatMs(value) {
 function computeCombinedMs(metrics) {
   const clientTotal = Number(metrics?.client?.total_ms || 0);
   const serverTotal = Number(metrics?.server?.total_ms || 0);
-
   if (!clientTotal && !serverTotal) return null;
   return clientTotal + serverTotal;
 }
@@ -41,17 +39,14 @@ function SimpleMetrics({ metrics, scheme }) {
         <span className="poi-simple-metric-label">Scheme</span>
         <strong className="poi-simple-metric-value">{scheme}</strong>
       </div>
-
       <div className="poi-simple-metric-card">
         <span className="poi-simple-metric-label">Total client time</span>
         <strong className="poi-simple-metric-value">{formatMs(clientTotal)}</strong>
       </div>
-
       <div className="poi-simple-metric-card">
         <span className="poi-simple-metric-label">Total server time</span>
         <strong className="poi-simple-metric-value">{formatMs(serverTotal)}</strong>
       </div>
-
       <div className="poi-simple-metric-card">
         <span className="poi-simple-metric-label">Client + server</span>
         <strong className="poi-simple-metric-value">{formatMs(combinedTotal)}</strong>
@@ -151,19 +146,14 @@ export default function PoiSearchPage() {
 
   useEffect(() => {
     const token = localStorage.getItem("access_token");
-    if (!token) {
-      navigate("/login");
-    }
+    if (!token) navigate("/login");
   }, [navigate]);
 
   const hasResults = useMemo(() => results.length > 0, [results]);
   const hasAllRuns = useMemo(() => allRuns.length > 0, [allRuns]);
 
   const handleChange = (field, value) => {
-    setForm((prev) => ({
-      ...prev,
-      [field]: value,
-    }));
+    setForm((prev) => ({ ...prev, [field]: value }));
   };
 
   const resetResponseState = () => {
@@ -185,10 +175,7 @@ export default function PoiSearchPage() {
     e.preventDefault();
 
     const token = localStorage.getItem("access_token");
-    if (!token) {
-      handleUnauthorized();
-      return;
-    }
+    if (!token) { handleUnauthorized(); return; }
 
     setLoading(true);
     setError("");
@@ -204,9 +191,7 @@ export default function PoiSearchPage() {
       };
 
       const response = await axios.post(API_URL, payload, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { Authorization: `Bearer ${token}` },
         timeout: REQUEST_TIMEOUT_MS,
       });
 
@@ -222,8 +207,6 @@ export default function PoiSearchPage() {
         setResults(data.results || []);
       }
     } catch (err) {
-      console.error(err);
-
       if (err?.response?.status === 401 || err?.response?.status === 403) {
         handleUnauthorized();
         return;
@@ -236,9 +219,7 @@ export default function PoiSearchPage() {
         "Request failed. Check that both backend services are running.";
 
       setError(
-        typeof backendMessage === "string"
-          ? backendMessage
-          : JSON.stringify(backendMessage)
+        typeof backendMessage === "string" ? backendMessage : JSON.stringify(backendMessage)
       );
     } finally {
       setLoading(false);
@@ -253,42 +234,21 @@ export default function PoiSearchPage() {
         <aside className="poi-sidebar">
           <div className="poi-sidebar-card">
             <p className="poi-sidebar-kicker">Services</p>
-
             <nav className="poi-sidebar-nav">
               <button className="poi-nav-item active" type="button">
                 Nearest POI Search
               </button>
-
-              <button
-                className="poi-nav-item"
-                type="button"
-                onClick={() => navigate("/location-sharing")}
-              >
+              <button className="poi-nav-item" type="button" onClick={() => navigate("/location-sharing")}>
                 Location Sharing
               </button>
-
-              <button
-                className="poi-nav-item"
-                type="button"
-                onClick={() => navigate("/anomaly-detection")}
-              >
+              <button className="poi-nav-item" type="button" onClick={() => navigate("/anomaly-detection")}>
                 Impossible Travel Detection
               </button>
-
-              <button
-                className="poi-nav-item"
-                type="button"
-                onClick={() => navigate("/statistics")}
-              >
-                Statistics & Benchmarks
+              <button className="poi-nav-item" type="button" onClick={() => navigate("/statistics")}>
+                Statistics &amp; Benchmarks
               </button>
             </nav>
-
-            <button
-              className="poi-back-btn"
-              type="button"
-              onClick={() => navigate("/home")}
-            >
+            <button className="poi-back-btn" type="button" onClick={() => navigate("/home")}>
               Back to Dashboard
             </button>
           </div>
@@ -300,10 +260,6 @@ export default function PoiSearchPage() {
               <div>
                 <p className="poi-eyebrow">Nearest Points of Interest</p>
                 <h1>Search Nearby Services</h1>
-                <p className="poi-subtitle">
-                  Search for the nearest POIs by category using privacy-preserving
-                  distance computation.
-                </p>
               </div>
             </header>
 
@@ -311,16 +267,12 @@ export default function PoiSearchPage() {
               <section className="poi-card poi-form-card">
                 <div className="poi-card-header">
                   <h3>Query Form</h3>
-                  <p>Choose a category and enter the query parameters below.</p>
                 </div>
 
                 <form onSubmit={handleSubmit} className="poi-form">
                   <label>
                     Category
-                    <select
-                      value={form.category}
-                      onChange={(e) => handleChange("category", e.target.value)}
-                    >
+                    <select value={form.category} onChange={(e) => handleChange("category", e.target.value)}>
                       <option value="hospital">hospital</option>
                       <option value="school">school</option>
                       <option value="stationery">stationery</option>
@@ -363,10 +315,7 @@ export default function PoiSearchPage() {
 
                   <label className="full-width">
                     Scheme
-                    <select
-                      value={form.scheme}
-                      onChange={(e) => handleChange("scheme", e.target.value)}
-                    >
+                    <select value={form.scheme} onChange={(e) => handleChange("scheme", e.target.value)}>
                       <option value="plaintext">plaintext</option>
                       <option value="ckks">ckks</option>
                       <option value="concrete">concrete</option>
@@ -374,35 +323,6 @@ export default function PoiSearchPage() {
                       <option value="all">all</option>
                     </select>
                   </label>
-
-                  {form.scheme === "ckks" && (
-                    <div className="full-width poi-alert">
-                      CKKS uses approximate homomorphic encryption and is suited
-                      for real-valued coordinates.
-                    </div>
-                  )}
-
-                  {form.scheme === "concrete" && (
-                    <div className="full-width poi-alert">
-                      Concrete uses TFHE — slower than CKKS/BFV but supports
-                      exact integer arithmetic. Each query may take several
-                      minutes; please be patient.
-                    </div>
-                  )}
-
-                  {form.scheme === "openfhe_ss" && (
-                    <div className="full-width poi-alert">
-                      OpenFHE Scheme Switching — server computes argmin directly
-                      on encrypted distances via CKKS→FHEW switching. Returns
-                      top-1 result. First request may take longer (key setup).
-                    </div>
-                  )}
-
-                  {form.scheme === "all" && (
-                    <div className="full-width poi-alert">
-                      All mode runs plaintext, CKKS, and OpenFHE Scheme Switching.
-                    </div>
-                  )}
 
                   <div className="full-width poi-form-actions">
                     <button className="primary-btn" type="submit" disabled={loading}>
@@ -417,47 +337,33 @@ export default function PoiSearchPage() {
               <section className="poi-card poi-results-card">
                 <div className="poi-card-header">
                   <h3>Results</h3>
-                  <p>
-                    {mode === "all"
-                      ? "Comparison across plaintext, CKKS, and OpenFHE Scheme Switching."
-                      : "Returned nearest points of interest."}
-                  </p>
                 </div>
 
                 {loading && (
                   <p className="poi-empty">
-                    {form.scheme === "all"
-                      ? "Running plaintext, CKKS, and OpenFHE Scheme Switching..."
-                      : form.scheme === "concrete"
+                    {form.scheme === "concrete"
                       ? "Running Concrete FHE — this may take several minutes..."
                       : form.scheme === "openfhe_ss"
                       ? "Running OpenFHE Scheme Switching — please wait..."
-                      : "Searching for nearest POIs..."}
+                      : "Searching..."}
                   </p>
                 )}
 
                 {!loading && mode === "single" && !hasResults && !error && (
-                  <p className="poi-empty">
-                    No results yet. Run a query to see results.
-                  </p>
+                  <p className="poi-empty">No results yet.</p>
                 )}
 
                 {!loading && mode === "single" && hasResults && (
                   <>
                     {responseMetrics && (
-                      <SimpleMetrics
-                        metrics={responseMetrics}
-                        scheme={selectedScheme}
-                      />
+                      <SimpleMetrics metrics={responseMetrics} scheme={selectedScheme} />
                     )}
                     <ResultsTable results={results} />
                   </>
                 )}
 
                 {!loading && mode === "all" && !hasAllRuns && !error && (
-                  <p className="poi-empty">
-                    No comparison results yet. Run a query to compare the schemes.
-                  </p>
+                  <p className="poi-empty">No results yet.</p>
                 )}
 
                 {!loading && mode === "all" && hasAllRuns && (
