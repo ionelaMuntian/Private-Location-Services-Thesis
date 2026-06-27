@@ -35,14 +35,14 @@ class OpenFHESSClientAdapter(ClientCryptoAdapter):
     def prepare_query(self, latitude: float, longitude: float, k: int) -> dict:
         rt = get_openfhe_ss_runtime()
 
+        # Keys are NOT serialized here — they are too large to hold as
+        # base64 strings in memory.  nearest_k.py serializes them directly
+        # to temp files and streams them via UploadOpenFHESSKeys gRPC.
         return {
             "plaintext_query": None,
             "encrypted_query": {
                 "payload": None,
                 "metadata": {
-                    "crypto_context_b64": rt.serialize_crypto_context(),
-                    "public_key_b64": rt.serialize_public_key(),
-                    "eval_mult_keys_b64": rt.serialize_eval_mult_keys(),
                     "encrypted_qy": rt.encrypt_broadcast(float(latitude)),
                     "encrypted_qx": rt.encrypt_broadcast(float(longitude)),
                     "n_candidates": rt.n,
@@ -64,11 +64,11 @@ class OpenFHESSClientAdapter(ClientCryptoAdapter):
             raise ValueError("OpenFHE SS: missing local_state.")
 
         rt = get_openfhe_ss_runtime()
-        dist2_ct_b64: str = response_data["dist2_ct_b64"]
+        dist_ct_b64: str = response_data["dist_ct_b64"]
         candidates: list[dict] = response_data["candidates"]
         actual_n = len(candidates)
 
-        winner_idx = rt.decrypt_argmin_via_ss(dist2_ct_b64, actual_n)
+        winner_idx = rt.eval_min_scheme_switching(dist_ct_b64, actual_n)
 
         if winner_idx >= actual_n:
             raise ValueError(

@@ -7,6 +7,9 @@ service ServiceProviderGateway {
 
   // Concrete evaluation keys are huge, so we upload them using streaming gRPC.
   rpc UploadConcreteKeys(stream ConcreteKeyChunk) returns (ConcreteKeyUploadResponse);
+
+  // OpenFHE SS keys are ~2 GB raw, so we stream them too.
+  rpc UploadOpenFHESSKeys(stream OpenFHESSKeyChunk) returns (OpenFHESSKeyUploadResponse);
 }
 
 message ServiceProviderRequest {
@@ -25,6 +28,16 @@ message ConcreteKeyChunk {
 }
 
 message ConcreteKeyUploadResponse {
+  int32 status_code = 1;
+  string json_payload = 2;
+}
+
+message OpenFHESSKeyChunk {
+  bytes data = 1;
+  string key_name = 2;
+}
+
+message OpenFHESSKeyUploadResponse {
   int32 status_code = 1;
   string json_payload = 2;
 }

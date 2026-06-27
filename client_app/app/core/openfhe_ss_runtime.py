@@ -1,3 +1,17 @@
+"""
+CKKS + FHEW scheme-switching runtime — client-side EvalMinSchemeSwitching.
+
+The client generates a full CKKS+FHEW context (BT keys, scheme-switching keys,
+precomputed polynomial tables) during setup.  The server only computes CKKS
+squared distances and returns the encrypted distance ciphertext.  The client
+then calls EvalMinSchemeSwitching locally to extract the argmin via FHEW,
+and decrypts the resulting one-hot CKKS ciphertext.
+
+This design avoids cross-machine serialization of the SWITCHCKKSRNS scheme
+object's internal member fields (which OpenFHE v1.5.1 does not expose via
+its Python bindings).
+"""
+
 import base64
 import tempfile
 from pathlib import Path
@@ -16,14 +30,7 @@ from openfhe import (
 FLEXIBLEAUTO = getattr(openfhe, "FLEXIBLEAUTO", openfhe.ScalingTechnique.FLEXIBLEAUTO)
 HYBRID = getattr(openfhe, "HYBRID", openfhe.KeySwitchTechnique.HYBRID)
 
-# Fixed batch size for all categories.  Next power of 2 above the largest
-# category in the UI (bank=122).  Using one fixed N avoids OpenFHE's global
-# eval-mult key registry conflicts when multiple N-value contexts coexist.
 N_SS = 128
-
-# STD128 needs more levels for the CKKS→FHEW conversion polynomial than TOY.
-# Server uses 4 levels (mul×2, mul×scale, mul×keep_mask); EvalMinSchemeSwitching
-# needs ~35 for 128 slots with STD128.  Total = 39 → use 40 with buffer.
 _SS_DEPTH = 52
 
 
@@ -59,13 +66,6 @@ def _get_hestd_not_set():
         return getattr(openfhe, "HEStd_NotSet", 0)
 
 
-def _get_toy_param():
-    try:
-        return openfhe.BINFHE_PARAMSET.TOY
-    except AttributeError:
-        return getattr(openfhe, "TOY", 0)
-
-
 def _get_std128_param():
     try:
         return openfhe.BINFHE_PARAMSET.STD128
@@ -74,15 +74,6 @@ def _get_std128_param():
 
 
 class OpenFHESSClientRuntime:
-    """
-    CKKS + FHEW scheme-switching runtime for nearest-POI argmin.
-
-    Uses a fixed batch size N_SS=128 for all categories.  The server fetches all
-    real candidates for a category and pads the remaining slots with large dummy
-    distances so the argmin always lands on a real POI.  The client restricts the
-    winner search to the first len(candidates) slots of the decrypted one-hot vector.
-    """
-
     def __init__(self) -> None:
         self.n = N_SS
         self.cc, self.keys = self._setup()
@@ -128,72 +119,101 @@ class OpenFHESSClientRuntime:
         ss_params.SetNumValues(self.n)
         ss_params.SetComputeArgmin(True)
         ss_params.SetOneHotEncoding(True)
-
         lwe_sk = cc.EvalSchemeSwitchingSetup(ss_params)
+        print("[OpenFHE SS] EvalSchemeSwitchingSetup done.", flush=True)
+
         bfhcc = cc.GetBinCCForSchemeSwitch()
         bfhcc.BTKeyGen(lwe_sk)
+        print("[OpenFHE SS] BTKeyGen done.", flush=True)
+
         cc.EvalSchemeSwitchingKeyGen(keys, lwe_sk)
+        print("[OpenFHE SS] EvalSchemeSwitchingKeyGen done.", flush=True)
+
         cc.EvalCKKStoFHEWPrecompute()
+        print("[OpenFHE SS] EvalCKKStoFHEWPrecompute done.", flush=True)
 
         return cc, keys
 
-    def serialize_crypto_context(self) -> str:
-        return _serialize_to_b64(self.cc)
+    # ------------------------------------------------------------------
+    # File-based serialization — uploaded to server (single round)
+    # ------------------------------------------------------------------
 
-    def serialize_public_key(self) -> str:
-        return _serialize_to_b64(self.keys.publicKey)
-
-    def serialize_eval_mult_keys(self) -> str:
+    def serialize_crypto_context_to_file(self) -> str:
         with tempfile.NamedTemporaryFile(delete=False) as tmp:
             path = tmp.name
-        try:
-            if not self.cc.SerializeEvalMultKey(path, BINARY):
-                raise RuntimeError("OpenFHE SS: failed to serialize EvalMult keys.")
-            return _b64encode(Path(path).read_bytes())
-        finally:
+        if not SerializeToFile(path, self.cc, BINARY):
             Path(path).unlink(missing_ok=True)
+            raise RuntimeError("OpenFHE SS: failed to serialize crypto context to file.")
+        return path
+
+    def serialize_public_key_to_file(self) -> str:
+        with tempfile.NamedTemporaryFile(delete=False) as tmp:
+            path = tmp.name
+        if not SerializeToFile(path, self.keys.publicKey, BINARY):
+            Path(path).unlink(missing_ok=True)
+            raise RuntimeError("OpenFHE SS: failed to serialize public key to file.")
+        return path
+
+    def serialize_eval_mult_keys_to_file(self) -> str:
+        with tempfile.NamedTemporaryFile(delete=False) as tmp:
+            path = tmp.name
+        if not self.cc.SerializeEvalMultKey(path, BINARY):
+            Path(path).unlink(missing_ok=True)
+            raise RuntimeError("OpenFHE SS: failed to serialize EvalMult keys to file.")
+        return path
+
+    # ------------------------------------------------------------------
+    # Encryption
+    # ------------------------------------------------------------------
 
     def encrypt_broadcast(self, value: float) -> str:
         pt = self.cc.MakeCKKSPackedPlaintext([float(value)] * self.n)
         ct = self.cc.Encrypt(self.keys.publicKey, pt)
         return _serialize_to_b64(ct)
 
-    def decrypt_argmin_via_ss(self, dist2_ct_b64: str, actual_n: int) -> int:
+    # ------------------------------------------------------------------
+    # Client-side EvalMinSchemeSwitching
+    # ------------------------------------------------------------------
+
+    def eval_min_scheme_switching(self, dist_ct_b64: str, actual_n: int) -> int:
         """
-        Runs EvalMinSchemeSwitching on the encrypted dist² ciphertext, then
-        decrypts the one-hot argmin and restricts the winner search to the first
-        actual_n slots (the real candidates; remaining slots are padding).
+        Load the server's encrypted distance ciphertext and run
+        EvalMinSchemeSwitching locally using the client's own FHEW context.
+        Returns the index of the nearest POI.
         """
-        path = _write_b64_to_temp_file(dist2_ct_b64)
+        path = _write_b64_to_temp_file(dist_ct_b64)
         try:
             ct, ok = DeserializeCiphertext(path, BINARY)
             if not ok:
-                raise RuntimeError("OpenFHE SS: failed to deserialize dist² ciphertext.")
+                raise RuntimeError("OpenFHE SS: failed to deserialize distance ciphertext.")
         finally:
             Path(path).unlink(missing_ok=True)
 
         print(
-            f"[OpenFHE SS] EvalMinSchemeSwitching (n={self.n}, actual_candidates={actual_n})...",
+            f"[OpenFHE SS] Running EvalMinSchemeSwitching locally "
+            f"(n={self.n}, actual={actual_n})...",
             flush=True,
         )
-        result = self.cc.EvalMinSchemeSwitching(
-            ct, self.keys.publicKey, self.n, self.n
-        )
-        argmin_ct = result[1]
+        result = self.cc.EvalMinSchemeSwitching(ct, self.keys.publicKey, self.n, self.n)
+
+        # Python binding returns (min_ct, argmin_ct) — both CKKS ciphertexts.
+        if isinstance(result, (list, tuple)) and len(result) >= 2:
+            argmin_ct = result[1]
+        else:
+            argmin_ct = result
 
         pt = self.cc.Decrypt(argmin_ct, self.keys.secretKey)
         pt.SetLength(self.n)
-        values = list(pt.GetRealPackedValue())[: self.n]
+        values = list(pt.GetRealPackedValue())[:actual_n]
 
         if not values:
             raise ValueError("OpenFHE SS: empty argmin result.")
 
-        # Restrict winner search to real candidates only (padding slots have large distances)
-        real_values = values[:actual_n]
         print(
-            f"[OpenFHE SS] Argmin one-hot (first {actual_n}): {[f'{v:.4f}' for v in real_values]}",
+            f"[OpenFHE SS] Argmin one-hot (first {actual_n}): "
+            f"{[f'{v:.4f}' for v in values]}",
             flush=True,
         )
-        winner_idx = max(range(len(real_values)), key=lambda i: abs(real_values[i]))
+        winner_idx = max(range(len(values)), key=lambda i: abs(values[i]))
         print(f"[OpenFHE SS] Winner: slot {winner_idx}", flush=True)
         return winner_idx

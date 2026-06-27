@@ -1,5 +1,6 @@
 # service_provider_app/app/grpc_server.py
 import asyncio
+import base64
 import json
 import traceback
 from urllib.parse import parse_qs, urlparse
@@ -11,6 +12,9 @@ from .generated import service_provider_pb2, service_provider_pb2_grpc
 from .modules.company.schemas import ComplianceEvaluationRequest
 from .modules.company.service import CompanyComplianceService
 from .modules.poi_search.engines.core_concrete import execute_concrete_upload_keys
+from .modules.poi_search.engines.openfhe_ss_engine import (
+    execute_openfhe_ss_upload_keys,
+)
 from .modules.poi_search.schemas import (
     ConcreteCandidatesRequest,
     ConcreteEvaluationRequest,
@@ -41,6 +45,16 @@ def _key_upload_response(
     payload: dict,
 ) -> service_provider_pb2.ConcreteKeyUploadResponse:
     return service_provider_pb2.ConcreteKeyUploadResponse(
+        status_code=status_code,
+        json_payload=json.dumps(payload, ensure_ascii=False),
+    )
+
+
+def _openfhe_ss_key_upload_response(
+    status_code: int,
+    payload: dict,
+) -> service_provider_pb2.OpenFHESSKeyUploadResponse:
+    return service_provider_pb2.OpenFHESSKeyUploadResponse(
         status_code=status_code,
         json_payload=json.dumps(payload, ensure_ascii=False),
     )
@@ -146,6 +160,42 @@ class ServiceProviderGatewayServicer(
                 {
                     "detail": f"{type(exc).__name__}: {exc}",
                 },
+            )
+
+    async def UploadOpenFHESSKeys(self, request_iterator, context):
+        try:
+            buffers: dict = {}
+            n_candidates = 128
+
+            async for chunk in request_iterator:
+                key_name = chunk.key_name
+                if key_name == "n_candidates":
+                    n_candidates = int(chunk.data.decode())
+                else:
+                    if key_name not in buffers:
+                        buffers[key_name] = bytearray()
+                    buffers[key_name].extend(chunk.data)
+
+            def to_b64(name: str) -> str:
+                return base64.b64encode(bytes(buffers.get(name, b""))).decode()
+
+            result = execute_openfhe_ss_upload_keys(
+                crypto_context_b64=to_b64("crypto_context"),
+                public_key_b64=to_b64("public_key"),
+                eval_mult_keys_b64=to_b64("eval_mult_keys"),
+                n_candidates=n_candidates,
+            )
+            return _openfhe_ss_key_upload_response(200, result)
+
+        except Exception as exc:
+            print(
+                f"[gRPC UploadOpenFHESSKeys error] {type(exc).__name__}: {exc}",
+                flush=True,
+            )
+            traceback.print_exc()
+            return _openfhe_ss_key_upload_response(
+                500,
+                {"detail": f"{type(exc).__name__}: {exc}"},
             )
 
 

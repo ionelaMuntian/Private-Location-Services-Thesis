@@ -2,6 +2,7 @@
 
 import base64
 import math
+import os
 from typing import cast
 
 # Must match the reference subtracted from poi.csv lat_m / lon_m columns.
@@ -29,6 +30,7 @@ from ....infrastructure.grpc_client import (
     get_from_service_provider,
     post_to_service_provider,
     upload_concrete_keys_to_service_provider,
+    upload_openfhe_ss_keys_from_files,
 )
 from ..crypto.ckks_client import CKKSClientAdapter
 from ..crypto.concrete_client import ConcreteClientAdapter
@@ -132,22 +134,28 @@ async def _execute_single_scheme(request: NearestKClientRequest) -> dict:
         prepare_query_ms = prepare_timer.elapsed_ms()
         metadata = prepared["encrypted_query"]["metadata"]
 
+        from ....core.openfhe_ss_runtime_instance import get_openfhe_ss_runtime
+        rt = get_openfhe_ss_runtime()
+
+        # Single-round key upload: CC + public key + eval mult keys only.
+        # EvalMinSchemeSwitching runs on the client, so no switching keys upload needed.
+        key_files = {
+            "crypto_context": rt.serialize_crypto_context_to_file(),
+            "public_key": rt.serialize_public_key_to_file(),
+            "eval_mult_keys": rt.serialize_eval_mult_keys_to_file(),
+        }
+        key_bytes_size = sum(
+            os.path.getsize(p) for p in key_files.values() if os.path.exists(p)
+        )
         payload_sizes = {
             "ciphertext_bytes": _b64len(metadata.get("encrypted_qy", "")),
-            "key_bytes": _b64len(metadata.get("crypto_context_b64", ""))
-            + _b64len(metadata.get("eval_mult_keys_b64", "")),
+            "key_bytes": key_bytes_size,
         }
 
-        # --- Step 1: upload evaluation keys ---
         upload_timer = StepTimer()
-        key_response = await post_to_service_provider(
-            "/service/poi/openfhe-ss/upload-keys",
-            {
-                "crypto_context_b64": metadata["crypto_context_b64"],
-                "public_key_b64": metadata["public_key_b64"],
-                "eval_mult_keys_b64": metadata["eval_mult_keys_b64"],
-                "n_candidates": n_candidates,
-            },
+        key_response = await upload_openfhe_ss_keys_from_files(
+            key_files=key_files,
+            n_candidates=n_candidates,
         )
         upload_keys_ms = upload_timer.elapsed_ms()
 

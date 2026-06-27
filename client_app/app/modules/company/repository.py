@@ -1,3 +1,4 @@
+# client_app/app/modules/company/repository.py
 from psycopg.rows import dict_row
 
 from ...core.config import settings

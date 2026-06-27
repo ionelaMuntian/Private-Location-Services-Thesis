@@ -148,8 +148,8 @@ def _build_inputset(n: int) -> list:
     to infer [1..N].  The intermediate IDs 2..N-1 add no new bit-width
     information and only inflate tracing time.
     """
-    cx = COORD_MAX_X // 2   # 5
-    cy = COORD_MAX_Y // 2   # 5
+    cx = COORD_MAX_X // 2
+    cy = COORD_MAX_Y // 2
 
     # ── Sample A: user at origin, all POIs at far corner ──
     args: list = [np.int64(0), np.int64(0)]

@@ -12,6 +12,7 @@ SchemeType = Literal["plaintext", "ckks", "concrete", "openfhe_ss"]
 class ServerTimingMetrics(BaseModel):
     candidate_selection_ms: float | None = None
     computation_ms: float | None = None
+    argmin_ms: float | None = None
     evaluation_ms: float | None = None
     total_ms: float
 
@@ -221,6 +222,6 @@ class OpenFHESSEvaluateRequest(BaseModel):
 
 class OpenFHESSEvaluateResponse(BaseModel):
     scheme: SingleSchemeType
-    dist2_ct_b64: str
+    dist_ct_b64: str
     candidates: List[dict]
     metrics: MetricsEnvelope
