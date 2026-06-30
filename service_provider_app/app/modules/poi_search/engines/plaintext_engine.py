@@ -1,4 +1,3 @@
-# service_provider_app/app/modules/poi_search/engines/plaintext_engine.py
 from .base import ServiceProviderEngine
 
 

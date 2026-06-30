@@ -1,4 +1,3 @@
-# service_provider_app/app/modules/poi_search/scenarios/nearest_k.py
 from fastapi import HTTPException
 from ....core.metrics import StepTimer
 from ..engines.ckks_engine import CKKSEngine
@@ -21,11 +20,6 @@ def get_engine(scheme: str):
 
 def execute_nearest_k(request: ServiceProviderNearestKRequest) -> dict:
     total_timer = StepTimer()
-
-    # ------------------------------------------------------------------
-    # PLAINTEXT — baseline only. The client intentionally sends its coords
-    # so the server can compute the exact nearest-K directly in the DB.
-    # ------------------------------------------------------------------
     if request.scheme == "plaintext":
         if request.plaintext_query is None:
             raise HTTPException(
@@ -61,14 +55,6 @@ def execute_nearest_k(request: ServiceProviderNearestKRequest) -> dict:
             },
         }
 
-    # ------------------------------------------------------------------
-    # BFV / CKKS — privacy-preserving HE schemes.
-    # The server fetches ALL POIs in the category with NO location filter.
-    # It then computes an encrypted squared distance for every POI and
-    # returns all encrypted results to the client.
-    # The client decrypts and sorts locally — the server never learns
-    # the user's location or which POI is closest.
-    # ------------------------------------------------------------------
     if request.scheme == "ckks":
         if request.encrypted_query is None:
             raise HTTPException(
@@ -76,7 +62,6 @@ def execute_nearest_k(request: ServiceProviderNearestKRequest) -> dict:
                 detail=f"encrypted_query is required for {request.scheme} mode.",
             )
 
-        # Fetch candidates with no location — order by id (neutral ordering).
         candidate_timer = StepTimer()
         candidates = repository.get_all_by_category(
             category=request.category,
@@ -115,12 +100,6 @@ def execute_nearest_k(request: ServiceProviderNearestKRequest) -> dict:
         }
         return engine_result
 
-    # ------------------------------------------------------------------
-    # Concrete uses the dedicated two-round flow:
-    #   POST /concrete/candidates  (no location)
-    #   POST /concrete/evaluate    (only ciphertext)
-    # The generic /nearest-k endpoint is not used for Concrete.
-    # ------------------------------------------------------------------
     if request.scheme == "concrete":
         raise HTTPException(
             status_code=400,

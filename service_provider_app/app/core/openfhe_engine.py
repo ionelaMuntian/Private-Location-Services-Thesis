@@ -1,4 +1,3 @@
-# service_provider_app/app/core/openfhe_engine.py
 import base64
 import tempfile
 from pathlib import Path

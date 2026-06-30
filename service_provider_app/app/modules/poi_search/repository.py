@@ -1,4 +1,3 @@
-# service_provider_app/app/modules/poi_search/repository.py
 from typing import Any
 
 from psycopg.rows import dict_row
@@ -12,12 +11,6 @@ class PoiRepository:
         self.schema = settings.db_schema
         self.table = settings.db_table
 
-    # ------------------------------------------------------------------
-    # Used by BFV / CKKS / Concrete — NO location parameter.
-    # The server fetches all POIs in the requested category and returns
-    # them in a fixed, location-independent order (by id).
-    # The user's coordinates are never involved here.
-    # ------------------------------------------------------------------
     def get_all_by_category(
         self,
         category: str,
@@ -50,10 +43,6 @@ class PoiRepository:
 
         return [dict(row) for row in rows]
 
-    # ------------------------------------------------------------------
-    # Used only by the PLAINTEXT scheme — the baseline comparison that
-    # intentionally uses the user's location for a direct nearest-K query.
-    # ------------------------------------------------------------------
     def get_by_category_nearest_k_plaintext(
         self,
         category: str,

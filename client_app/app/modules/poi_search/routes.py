@@ -1,4 +1,3 @@
-# client_app/app/modules/poi_search/routes.py
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 

@@ -1,4 +1,3 @@
-# service_provider_app/app/modules/company/schemas.py
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -10,13 +9,11 @@ class ComplianceEvaluationRequest(BaseModel):
     encrypted_current_lat: str
     encrypted_current_lon: str
 
-    # Home bounding-box corners (lat ± radius, lon ± radius, all scaled)
     encrypted_home_north: str
     encrypted_home_south: str
     encrypted_home_east: str
     encrypted_home_west: str
 
-    # Office bounding-box corners
     encrypted_office_north: str
     encrypted_office_south: str
     encrypted_office_east: str

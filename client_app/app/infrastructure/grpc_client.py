@@ -1,4 +1,3 @@
-# client_app/app/infrastructure/grpc_client.py
 
 import json
 import sys
@@ -15,11 +14,10 @@ from ..generated import service_provider_pb2, service_provider_pb2_grpc
 
 GRPC_TIMEOUT_SECONDS = 600.0
 
-# -1 means unlimited; individual scheme implementations keep their payloads sane.
+# -1 = unlimited
 GRPC_MAX_MESSAGE_SIZE = -1
 
-# Chunk size for streaming evaluation keys (Concrete and OpenFHE SS).
-# 4 MB chunks avoid building one huge gRPC message.
+# Chunk size for streaming evaluation keys
 CONCRETE_KEY_CHUNK_SIZE = 4 * 1024 * 1024
 OPENFHE_SS_KEY_CHUNK_SIZE = 4 * 1024 * 1024
 
@@ -45,13 +43,6 @@ async def call_service_provider(
     path: str,
     payload: dict | None = None,
 ) -> dict:
-    """
-    Generic gRPC gateway call.
-
-    This replaces the old HTTP call from client_app to service_provider_app.
-    The frontend still calls client_app through HTTP, but internal backend-to-backend
-    communication uses gRPC.
-    """
     payload = payload or {}
 
     try:
@@ -121,13 +112,6 @@ async def upload_concrete_keys_to_service_provider(
     evaluation_keys_bytes: bytes,
     chunk_size: int = CONCRETE_KEY_CHUNK_SIZE,
 ) -> dict:
-    """
-    Upload Concrete evaluation keys using streaming gRPC.
-
-    This avoids sending the evaluation keys as one huge JSON/base64 field inside
-    /concrete/evaluate. That previous approach created ~700+ MB payloads and
-    caused client_app to be killed with exit code 137.
-    """
 
     async def chunk_generator() -> AsyncIterator[service_provider_pb2.ConcreteKeyChunk]:
         total_size = len(evaluation_keys_bytes)
@@ -204,13 +188,6 @@ async def upload_openfhe_ss_keys_from_files(
     n_candidates: int,
     chunk_size: int = OPENFHE_SS_KEY_CHUNK_SIZE,
 ) -> dict:
-    """
-    Upload OpenFHE SS keys using streaming gRPC, reading from temp files on disk.
-
-    This avoids loading all keys as base64 strings in Python memory (which caused
-    client_app to be OOM-killed with exit code 137 when the payload reached ~2.8 GB).
-    Each file is streamed in 4 MB chunks; files are deleted after streaming.
-    """
 
     async def chunk_generator() -> AsyncIterator[service_provider_pb2.OpenFHESSKeyChunk]:
         yield service_provider_pb2.OpenFHESSKeyChunk(
@@ -297,11 +274,6 @@ async def upload_openfhe_ss_switching_keys(
     eval_automorphism_keys_file: str,
     chunk_size: int = OPENFHE_SS_KEY_CHUNK_SIZE,
 ) -> dict:
-    """
-    Round 2 upload: sends key_id + eval automorphism keys to the server.
-    The server uses them to finalise the FHEW switching key setup.
-    """
-
     async def chunk_generator() -> AsyncIterator[service_provider_pb2.OpenFHESSKeyChunk]:
         # Signal Round 2 by sending the key_id first
         yield service_provider_pb2.OpenFHESSKeyChunk(

@@ -1,4 +1,3 @@
-// frontend/src/modules/anomaly-detection/pages/AnomalyDetectionPage.jsx
 import { useNavigate } from "react-router-dom";
 import "../styles/anomaly-detection.css";
 

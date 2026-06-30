@@ -5,7 +5,6 @@ import "../../poi-search/styles/poi-search.css";
 const API_BASE_URL = "http://127.0.0.1:8000";
 const COMPANY_API = `${API_BASE_URL}/client/company`;
 
-// Degree ↔ Web Mercator (EPSG:3857) conversion helpers
 function degToMercatorLon(lon) {
   return lon * 20037508.34 / 180;
 }
@@ -19,7 +18,6 @@ function mercatorLatToDeg(y) {
   return (Math.atan(Math.exp(y * Math.PI / 20037508.34)) * 360 / Math.PI) - 90;
 }
 
-// Form state uses decimal degrees; numberiseForm converts to meters before the API call.
 const BLANK_FORM = {
   name: "Technical University of Cluj-Napoca",
   allowed_country: "Romania",
@@ -37,22 +35,17 @@ export default function AdminDashboardPage() {
   const navigate = useNavigate();
 
   const [currentPage, setCurrentPage] = useState("company-policy");
-
-  // Shared
   const [companies, setCompanies] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
-  // Page 1 — Create Company
   const [createForm, setCreateForm] = useState(BLANK_FORM);
 
-  // Page 2 — Update Company
   const [updateCompanyId, setUpdateCompanyId] = useState("");
   const [updateForm, setUpdateForm] = useState(BLANK_FORM);
 
-  // Page 3 — Manage Employees
   const [manageCompanyId, setManageCompanyId] = useState("");
   const [employees, setEmployees] = useState([]);
   const [selectedUserId, setSelectedUserId] = useState("");
@@ -97,8 +90,6 @@ export default function AdminDashboardPage() {
     navigate("/login");
   };
 
-  // ── Data loaders ──────────────────────────────────────────────────────────
-
   const loadCompanies = async () => {
     const res = await fetch(`${COMPANY_API}/admin/companies`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -141,10 +132,7 @@ export default function AdminDashboardPage() {
     if (!token) { navigate("/login"); return; }
     if (username !== "admin") { navigate("/home"); return; }
     Promise.all([loadCompanies(), loadAllUsers()]).catch((err) => setError(err.message));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // ── Page 1 handlers ───────────────────────────────────────────────────────
 
   const handleCreateCompany = async (e) => {
     e.preventDefault();
@@ -167,8 +155,6 @@ export default function AdminDashboardPage() {
       setLoading(false);
     }
   };
-
-  // ── Page 2 handlers ───────────────────────────────────────────────────────
 
   const handleSelectUpdateCompany = (companyId) => {
     setUpdateCompanyId(companyId);
@@ -236,8 +222,6 @@ export default function AdminDashboardPage() {
     }
   };
 
-  // ── Page 3 handlers ───────────────────────────────────────────────────────
-
   const handleSelectManageCompany = async (companyId) => {
     setManageCompanyId(companyId);
     setEmployees([]);
@@ -302,8 +286,6 @@ export default function AdminDashboardPage() {
     }
   };
 
-  // ── Render ────────────────────────────────────────────────────────────────
-
   return (
     <div className="poi-page">
       <div className="poi-background-grid"></div>
@@ -343,7 +325,7 @@ export default function AdminDashboardPage() {
         <main className="poi-main">
           <div className="poi-container">
 
-            {/* ── Page 1: Company Policy (Create) ── */}
+            {/*  Page 1: Company Policy (Create)  */}
             {currentPage === "company-policy" && (
               <>
                 <header className="poi-topbar">
@@ -377,7 +359,7 @@ export default function AdminDashboardPage() {
               </>
             )}
 
-            {/* ── Page 2: Update Company ── */}
+            {/* Page 2: Update Company */}
             {currentPage === "update-company" && (
               <>
                 <header className="poi-topbar">
@@ -449,7 +431,7 @@ export default function AdminDashboardPage() {
               </>
             )}
 
-            {/* ── Page 3: Manage Employees ── */}
+            {/*  Page 3: Manage Employees */}
             {currentPage === "manage-employees" && (
               <>
                 <header className="poi-topbar">
@@ -682,7 +664,6 @@ export default function AdminDashboardPage() {
   );
 }
 
-// ── Shared form fields component ─────────────────────────────────────────────
 
 function CompanyFormFields({ form, onChange }) {
   return (
@@ -740,8 +721,6 @@ function CompanyFormFields({ form, onChange }) {
   );
 }
 
-// ── Feedback banner ───────────────────────────────────────────────────────────
-
 function FeedbackSection({ message, error }) {
   if (!message && !error) return null;
   return (
@@ -751,8 +730,6 @@ function FeedbackSection({ message, error }) {
     </section>
   );
 }
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function numberiseForm(form) {
   const toLatM  = (deg) => degToMercatorLat(Number(deg));

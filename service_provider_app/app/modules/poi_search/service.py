@@ -1,4 +1,3 @@
-# service_provider_app/app/modules/poi_search/service.py
 from ..poi_search.engines.core_concrete import (
     execute_concrete_candidates,
     execute_concrete_evaluation,

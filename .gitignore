@@ -1,5 +1,5 @@
 # Large RBA dataset
-database/anomaly-detection-dataset/
+datasets/rba-dataset.csv
 
 # Jupyter checkpoints
 .ipynb_checkpoints/

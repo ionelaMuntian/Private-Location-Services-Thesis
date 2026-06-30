@@ -1,4 +1,3 @@
-// frontend/src/modules/auth/pages/LoginPage.jsx
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import PageShell from "../../../components/PageShell";
@@ -130,8 +129,6 @@ export default function LoginPage() {
     <PageShell className="login-page">
       <div className="login-layout">
         <div className="login-grid"></div>
-        <div className="login-glow glow-left"></div>
-        <div className="login-glow glow-right"></div>
 
         <section className="login-left">
           <p className="login-kicker">Bachelor Thesis</p>
@@ -151,11 +148,11 @@ export default function LoginPage() {
           <div className="login-card">
             <div className="login-card-header">
               <h2>{mode === "login" ? "Welcome back" : "Create account"}</h2>
-              <p className="login-subtitle">
-                {mode === "login"
-                  ? "Sign in to access encrypted location-based services."
-                  : "Create an account to start using the trusted client."}
-              </p>
+              {mode === "signup" && (
+                <p className="login-subtitle">
+                  Create an account to start using the trusted client.
+                </p>
+              )}
             </div>
 
             <div className="login-toggle">
@@ -217,12 +214,6 @@ export default function LoginPage() {
                   required
                 />
               </div>
-
-              {mode === "login" && (
-                <div className="login-admin-hint">
-                  Company admin demo: <strong>admin</strong> / <strong>admin</strong>
-                </div>
-              )}
 
               {errorMessage && (
                 <p className="auth-message auth-error">{errorMessage}</p>

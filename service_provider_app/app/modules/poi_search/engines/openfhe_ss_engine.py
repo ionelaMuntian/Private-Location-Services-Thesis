@@ -31,31 +31,19 @@ from ..repository import PoiRepository
 _KEY_TTL_SECONDS = 60 * 60
 _KEY_STORE: dict[str, dict] = {}
 
-# Per-key_id deserialized crypto context cache.
-# OpenFHE stores eval-mult keys in a global in-process registry.
-# Re-deserializing the same context on every request causes registry collisions
-# when multiple N values coexist.  Caching the cc object avoids this: keys are
-# loaded once and remain registered for the lifetime of the key_id.
 _CC_CACHE: dict[str, Any] = {}
 
 repository = PoiRepository()
 
-# Scales squared-metre distances into the FHEW-optimal range [0, ~0.5].
-# Cluj city-scale max dist² ≈ 1e8 m²; 5e-9 maps that to ~0.5, safely below
-# the 1.0 padding mask.  Larger scale = more FHEW precision bits used.
 _DIST_SCALE = 5e-9
 
-# Fixed batch size matching the client runtime (N_SS=128).
 _BATCH_SIZE = 128
 
-# SS parameters — must match the client's openfhe_ss_runtime.py exactly.
 _N_SLOTS = 128
 _N_VALUES = 128
 
 
-# ---------------------------------------------------------------------------
 # Helpers
-# ---------------------------------------------------------------------------
 
 def _b64decode(data: str) -> bytes:
     return base64.b64decode(data.encode("utf-8"))
@@ -93,9 +81,7 @@ def _cleanup_expired_keys() -> None:
         _CC_CACHE.pop(kid, None)
 
 
-# ---------------------------------------------------------------------------
-# Key upload — single round
-# ---------------------------------------------------------------------------
+# Key upload: single round
 
 def execute_openfhe_ss_upload_keys(
     crypto_context_b64: str,
@@ -105,11 +91,6 @@ def execute_openfhe_ss_upload_keys(
     eval_automorphism_keys_b64: str = "",
     fhew_context_b64: str = "",
 ) -> dict:
-    """
-    Deserialise the client's CKKS CryptoContext and load eval mult keys.
-    The server only performs CKKS distance computation — all scheme switching
-    (EvalMinSchemeSwitching) runs on the client side.
-    """
     _cleanup_expired_keys()
 
     key_id = str(uuid4())
@@ -133,9 +114,7 @@ def execute_openfhe_ss_upload_keys(
     }
 
 
-# ---------------------------------------------------------------------------
 # Deserialization helpers
-# ---------------------------------------------------------------------------
 
 def _load_keys(key_id: str) -> dict:
     _cleanup_expired_keys()
@@ -213,9 +192,7 @@ def _load_public_key(pk_b64: str):
         Path(path).unlink(missing_ok=True)
 
 
-# ---------------------------------------------------------------------------
-# Evaluation: vectorised CKKS distances + server-side argmin via EvalMinSchemeSwitching
-# ---------------------------------------------------------------------------
+# Evaluation
 
 def execute_openfhe_ss_evaluate(
     key_id: str,
@@ -224,12 +201,6 @@ def execute_openfhe_ss_evaluate(
     category: str,
     n_candidates: int,
 ) -> dict:
-    """
-    1. Load cached CKKS context.
-    2. Fetch POIs from DB.
-    3. Compute vectorised scaled squared distances in CKKS.
-    4. Return encrypted distance ciphertext to the client for local EvalMinSchemeSwitching.
-    """
     total_timer = StepTimer()
 
     entry = _load_keys(key_id)
@@ -244,7 +215,6 @@ def execute_openfhe_ss_evaluate(
             ),
         )
 
-    # --- Fetch candidates -----------------------------------------------
     candidate_timer = StepTimer()
     rows = repository.get_all_by_category(category=category, limit=n)
     actual_n = len(rows)
@@ -285,7 +255,6 @@ def execute_openfhe_ss_evaluate(
     ct_qy = _load_ciphertext(encrypted_qy)
     ct_qx = _load_ciphertext(encrypted_qx)
 
-    # --- Compute vectorised scaled dist² ---------------------------------
     compute_timer = StepTimer()
     print(
         f"[OpenFHE SS] Computing distances: {actual_n} real candidates, "
@@ -304,7 +273,6 @@ def execute_openfhe_ss_evaluate(
 
     dist2_ct = cc.EvalAdd(dy2, dx2)
 
-    # Scale real slots into FHEW range [0, ~0.5]; pad unused slots to 0.9.
     if actual_n < _BATCH_SIZE:
         combined_scale = cc.MakeCKKSPackedPlaintext(
             [_DIST_SCALE] * actual_n + [0.0] * (_BATCH_SIZE - actual_n)

@@ -1,14 +1,13 @@
-@import url("https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap");
 
 :root {
   --login-bg: #f6f3ef;
-  --login-bg-soft: #fbf8f4;
-  --login-green: #1c6973;
-  --login-green-dark: #155760;
-  --login-green-soft: rgba(28, 105, 115, 0.12);
+  --login-blue: #1d3461;
+  --login-blue-dark: #152850;
+  --login-blue-soft: rgba(29, 52, 97, 0.12);
   --login-text: #2f2a25;
   --login-text-soft: #6d6760;
-  --login-border: rgba(28, 105, 115, 0.14);
+  --login-border: rgba(29, 52, 97, 0.14);
   --login-white: rgba(255, 255, 255, 0.72);
   --login-input-bg: rgba(255, 255, 255, 0.9);
   --login-error: #b23b3b;
@@ -19,10 +18,7 @@
 
 .login-page {
   min-height: 100vh;
-  background:
-    radial-gradient(circle at top left, rgba(28, 105, 115, 0.08), transparent 28%),
-    radial-gradient(circle at bottom right, rgba(28, 105, 115, 0.1), transparent 22%),
-    linear-gradient(180deg, var(--login-bg-soft) 0%, var(--login-bg) 100%);
+  background: var(--login-bg);
   font-family: "Inter", sans-serif;
   overflow: hidden;
   position: relative;
@@ -45,36 +41,12 @@
   position: absolute;
   inset: 0;
   background-image:
-    linear-gradient(rgba(28, 105, 115, 0.035) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(28, 105, 115, 0.035) 1px, transparent 1px);
+    linear-gradient(rgba(29, 52, 97, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(29, 52, 97, 0.03) 1px, transparent 1px);
   background-size: 72px 72px;
-  opacity: 0.4;
+  opacity: 0.5;
   pointer-events: none;
   z-index: 0;
-}
-
-.login-glow {
-  position: absolute;
-  border-radius: 50%;
-  filter: blur(100px);
-  pointer-events: none;
-  z-index: 0;
-}
-
-.glow-left {
-  width: 340px;
-  height: 340px;
-  left: -4%;
-  top: 6%;
-  background: rgba(28, 105, 115, 0.12);
-}
-
-.glow-right {
-  width: 280px;
-  height: 280px;
-  right: 0;
-  bottom: 8%;
-  background: rgba(28, 105, 115, 0.1);
 }
 
 .login-left,
@@ -89,7 +61,7 @@
 
 .login-kicker {
   margin: 0 0 18px;
-  color: var(--login-green);
+  color: var(--login-blue);
   font-size: 0.84rem;
   font-weight: 700;
   letter-spacing: 0.16em;
@@ -98,24 +70,22 @@
 
 .login-left h1 {
   margin: 0;
-  font-family: "Cormorant Garamond", serif;
-  font-size: clamp(2.8rem, 5.2vw, 5.4rem);
-  line-height: 0.96;
-  font-weight: 500;
-  letter-spacing: -0.02em;
+  font-family: "Inter", sans-serif;
+  font-size: clamp(2.4rem, 4.5vw, 4.6rem);
+  line-height: 1.05;
+  font-weight: 800;
+  letter-spacing: -0.03em;
   max-width: 760px;
 }
 
 .login-title-main {
   display: block;
   color: #2f2a25;
-  font-style: italic;
 }
 
 .login-title-highlight {
   display: block;
-  color: var(--login-green);
-  font-style: italic;
+  color: var(--login-blue);
 }
 
 .login-tags {
@@ -130,7 +100,7 @@
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.7);
   border: 1px solid var(--login-border);
-  color: var(--login-green);
+  color: var(--login-blue);
   font-size: 0.92rem;
   font-weight: 600;
   box-shadow: 0 6px 18px rgba(30, 30, 30, 0.04);
@@ -149,17 +119,18 @@
   border: 1px solid var(--login-border);
   backdrop-filter: blur(14px);
   box-shadow:
-    0 18px 36px rgba(45, 45, 45, 0.06),
+    0 18px 36px rgba(29, 52, 97, 0.07),
     inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
 .login-card-header h2 {
-  margin: 0 0 10px;
+  margin: 0 0 22px;
   color: var(--login-text);
-  font-family: "Cormorant Garamond", serif;
-  font-size: 2.2rem;
-  font-weight: 600;
-  line-height: 1;
+  font-family: "Inter", sans-serif;
+  font-size: 1.75rem;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
 }
 
 .login-subtitle {
@@ -179,7 +150,7 @@
 .toggle-btn {
   border: 1px solid var(--login-border);
   background: rgba(255, 255, 255, 0.68);
-  color: var(--login-green);
+  color: var(--login-blue);
   border-radius: 14px;
   padding: 12px 14px;
   font-size: 0.96rem;
@@ -194,13 +165,13 @@
 
 .toggle-btn:hover {
   transform: translateY(-1px);
-  background: rgba(28, 105, 115, 0.08);
+  background: rgba(29, 52, 97, 0.07);
 }
 
 .toggle-btn.active {
-  background: var(--login-green);
+  background: var(--login-blue);
   color: white;
-  box-shadow: 0 10px 24px rgba(28, 105, 115, 0.16);
+  box-shadow: 0 10px 24px rgba(29, 52, 97, 0.18);
 }
 
 .auth-form {
@@ -239,8 +210,8 @@
 }
 
 .form-group input:focus {
-  border-color: rgba(28, 105, 115, 0.45);
-  box-shadow: 0 0 0 4px rgba(28, 105, 115, 0.08);
+  border-color: rgba(29, 52, 97, 0.45);
+  box-shadow: 0 0 0 4px rgba(29, 52, 97, 0.08);
 }
 
 .login-btn,
@@ -260,13 +231,13 @@
 }
 
 .login-btn {
-  background: var(--login-green);
+  background: var(--login-blue);
   color: white;
-  box-shadow: 0 10px 24px rgba(28, 105, 115, 0.18);
+  box-shadow: 0 10px 24px rgba(29, 52, 97, 0.2);
 }
 
 .login-btn:hover:not(:disabled) {
-  background: var(--login-green-dark);
+  background: var(--login-blue-dark);
   transform: translateY(-1px);
 }
 
@@ -326,8 +297,8 @@
   }
 
   .login-left h1 {
-    font-size: 3rem;
-    line-height: 1;
+    font-size: 2.6rem;
+    line-height: 1.05;
   }
 
   .login-card {
@@ -336,7 +307,7 @@
   }
 
   .login-card-header h2 {
-    font-size: 1.9rem;
+    font-size: 1.5rem;
   }
 
   .login-tags {
@@ -351,14 +322,4 @@
   .login-toggle {
     grid-template-columns: 1fr;
   }
-
-  .login-admin-hint {
-  border: 1px solid var(--login-border);
-  background: rgba(28, 105, 115, 0.07);
-  color: var(--login-green);
-  border-radius: 14px;
-  padding: 11px 13px;
-  font-size: 0.9rem;
-  line-height: 1.45;
-}
 }

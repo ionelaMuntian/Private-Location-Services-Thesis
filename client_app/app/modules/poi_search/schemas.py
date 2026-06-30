@@ -1,4 +1,3 @@
-# client_app/app/modules/poi_search/schemas.py
 from typing import List, Literal, Union
 
 from pydantic import BaseModel, Field
@@ -11,16 +10,13 @@ SchemeType = Literal["plaintext", "ckks", "concrete", "openfhe_ss", "all"]
 class ClientTimingMetrics(BaseModel):
     prepare_query_ms: float | None = None
 
-    # Used by plaintext / CKKS single-round protocol
     service_call_ms: float | None = None
 
-    # Used by Concrete optimized multi-step protocol
     upload_keys_ms: float | None = None
     candidate_fetch_ms: float | None = None
     build_public_args_ms: float | None = None
     evaluate_call_ms: float | None = None
 
-    # Used by all schemes
     parse_response_ms: float | None = None
     total_ms: float
 

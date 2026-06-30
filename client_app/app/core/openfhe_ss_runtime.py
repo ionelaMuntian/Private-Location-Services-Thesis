@@ -1,16 +1,3 @@
-"""
-CKKS + FHEW scheme-switching runtime — client-side EvalMinSchemeSwitching.
-
-The client generates a full CKKS+FHEW context (BT keys, scheme-switching keys,
-precomputed polynomial tables) during setup.  The server only computes CKKS
-squared distances and returns the encrypted distance ciphertext.  The client
-then calls EvalMinSchemeSwitching locally to extract the argmin via FHEW,
-and decrypts the resulting one-hot CKKS ciphertext.
-
-This design avoids cross-machine serialization of the SWITCHCKKSRNS scheme
-object's internal member fields (which OpenFHE v1.5.1 does not expose via
-its Python bindings).
-"""
 
 import base64
 import tempfile
@@ -47,7 +34,7 @@ def _serialize_to_b64(obj: Any) -> str:
         path = tmp.name
     try:
         if not SerializeToFile(path, obj, BINARY):
-            raise RuntimeError("OpenFHE SS: failed to serialize object.")
+            raise RuntimeError("OpenFHE SS: failed to serialize object")
         return _b64encode(Path(path).read_bytes())
     finally:
         Path(path).unlink(missing_ok=True)
@@ -82,7 +69,7 @@ class OpenFHESSClientRuntime:
         SchSwchParams = getattr(openfhe, "SchSwchParams", None)
         if SchSwchParams is None:
             raise RuntimeError(
-                "openfhe.SchSwchParams not found — openfhe-python >= 1.5.0 required."
+                "openfhe.SchSwchParams not found"
             )
 
         HEStd_NotSet = _get_hestd_not_set()
@@ -120,30 +107,27 @@ class OpenFHESSClientRuntime:
         ss_params.SetComputeArgmin(True)
         ss_params.SetOneHotEncoding(True)
         lwe_sk = cc.EvalSchemeSwitchingSetup(ss_params)
-        print("[OpenFHE SS] EvalSchemeSwitchingSetup done.", flush=True)
+        print("[OpenFHE SS] EvalSchemeSwitchingSetup done", flush=True)
 
         bfhcc = cc.GetBinCCForSchemeSwitch()
         bfhcc.BTKeyGen(lwe_sk)
-        print("[OpenFHE SS] BTKeyGen done.", flush=True)
+        print("[OpenFHE SS] BTKeyGen done", flush=True)
 
         cc.EvalSchemeSwitchingKeyGen(keys, lwe_sk)
-        print("[OpenFHE SS] EvalSchemeSwitchingKeyGen done.", flush=True)
+        print("[OpenFHE SS] EvalSchemeSwitchingKeyGen done", flush=True)
 
         cc.EvalCKKStoFHEWPrecompute()
-        print("[OpenFHE SS] EvalCKKStoFHEWPrecompute done.", flush=True)
+        print("[OpenFHE SS] EvalCKKStoFHEWPrecompute done", flush=True)
 
         return cc, keys
 
-    # ------------------------------------------------------------------
-    # File-based serialization — uploaded to server (single round)
-    # ------------------------------------------------------------------
-
+    # File-based serialization - uploaded to server (single round)
     def serialize_crypto_context_to_file(self) -> str:
         with tempfile.NamedTemporaryFile(delete=False) as tmp:
             path = tmp.name
         if not SerializeToFile(path, self.cc, BINARY):
             Path(path).unlink(missing_ok=True)
-            raise RuntimeError("OpenFHE SS: failed to serialize crypto context to file.")
+            raise RuntimeError("OpenFHE SS: failed to serialize crypto context to file")
         return path
 
     def serialize_public_key_to_file(self) -> str:
@@ -151,7 +135,7 @@ class OpenFHESSClientRuntime:
             path = tmp.name
         if not SerializeToFile(path, self.keys.publicKey, BINARY):
             Path(path).unlink(missing_ok=True)
-            raise RuntimeError("OpenFHE SS: failed to serialize public key to file.")
+            raise RuntimeError("OpenFHE SS: failed to serialize public key to file")
         return path
 
     def serialize_eval_mult_keys_to_file(self) -> str:
@@ -159,33 +143,22 @@ class OpenFHESSClientRuntime:
             path = tmp.name
         if not self.cc.SerializeEvalMultKey(path, BINARY):
             Path(path).unlink(missing_ok=True)
-            raise RuntimeError("OpenFHE SS: failed to serialize EvalMult keys to file.")
+            raise RuntimeError("OpenFHE SS: failed to serialize EvalMult keys to file")
         return path
 
-    # ------------------------------------------------------------------
     # Encryption
-    # ------------------------------------------------------------------
-
     def encrypt_broadcast(self, value: float) -> str:
         pt = self.cc.MakeCKKSPackedPlaintext([float(value)] * self.n)
         ct = self.cc.Encrypt(self.keys.publicKey, pt)
         return _serialize_to_b64(ct)
 
-    # ------------------------------------------------------------------
-    # Client-side EvalMinSchemeSwitching
-    # ------------------------------------------------------------------
-
+    # Client-side: EvalMinSchemeSwitching
     def eval_min_scheme_switching(self, dist_ct_b64: str, actual_n: int) -> int:
-        """
-        Load the server's encrypted distance ciphertext and run
-        EvalMinSchemeSwitching locally using the client's own FHEW context.
-        Returns the index of the nearest POI.
-        """
         path = _write_b64_to_temp_file(dist_ct_b64)
         try:
             ct, ok = DeserializeCiphertext(path, BINARY)
             if not ok:
-                raise RuntimeError("OpenFHE SS: failed to deserialize distance ciphertext.")
+                raise RuntimeError("OpenFHE SS: failed to deserialize distance ciphertext")
         finally:
             Path(path).unlink(missing_ok=True)
 
@@ -196,7 +169,7 @@ class OpenFHESSClientRuntime:
         )
         result = self.cc.EvalMinSchemeSwitching(ct, self.keys.publicKey, self.n, self.n)
 
-        # Python binding returns (min_ct, argmin_ct) — both CKKS ciphertexts.
+        # Python binding returns (min_ct, argmin_ct) - both CKKS ciphertexts
         if isinstance(result, (list, tuple)) and len(result) >= 2:
             argmin_ct = result[1]
         else:
@@ -207,7 +180,7 @@ class OpenFHESSClientRuntime:
         values = list(pt.GetRealPackedValue())[:actual_n]
 
         if not values:
-            raise ValueError("OpenFHE SS: empty argmin result.")
+            raise ValueError("OpenFHE SS: empty argmin result")
 
         print(
             f"[OpenFHE SS] Argmin one-hot (first {actual_n}): "

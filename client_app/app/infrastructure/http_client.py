@@ -1,4 +1,3 @@
-# C:\Users\Mariana Ionela\MATERII\AN 4 - UTCN\LICENTA - PYTHON\client_app\app\infrastructure\http_client.py
 import json as _json
 import sys
 import traceback
@@ -9,21 +8,16 @@ from fastapi import HTTPException
 from ..core.config import settings
 
 
-# Generous timeout because Concrete FHE evaluation can be slow.
-# 10 minutes total, with separate sub-timeouts so we know which phase failed.
 HTTP_TIMEOUT = httpx.Timeout(
-    connect=30.0,    # time to establish TCP connection
-    read=600.0,      # time waiting for server to send response (10 min)
-    write=600.0,     # time to send request body to server (10 min)
-    pool=30.0,       # time waiting for a connection from the pool
+    connect=30.0,
+    read=600.0,
+    write=600.0,
+    pool=30.0,
 )
 
-
 def _log(msg: str) -> None:
-    """Force-flush stdout so logs show up immediately in `docker compose logs`."""
     print(msg, flush=True)
     sys.stdout.flush()
-
 
 async def get_from_service_provider(path: str) -> dict:
     _log(f"[GET {path}] start")
@@ -51,7 +45,6 @@ async def get_from_service_provider(path: str) -> dict:
 
 
 async def post_to_service_provider(path: str, payload: dict) -> dict:
-    # Measure the payload BEFORE sending so we know what we're dealing with.
     try:
         payload_json = _json.dumps(payload)
         payload_size = len(payload_json)
@@ -60,7 +53,6 @@ async def post_to_service_provider(path: str, payload: dict) -> dict:
             f"(~{payload_size / 1024:.0f} KB / {payload_size / (1024 * 1024):.2f} MB)"
         )
 
-        # Show the structure (top-level keys + sizes), to know what's heavy.
         if isinstance(payload, dict):
             for k, v in payload.items():
                 if isinstance(v, str):

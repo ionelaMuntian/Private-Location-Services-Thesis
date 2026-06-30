@@ -1,4 +1,3 @@
-# service_provider_app/app/modules/poi_search/routes.py
 from fastapi import APIRouter
 
 from .schemas import (

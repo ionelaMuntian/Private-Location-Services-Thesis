@@ -1,4 +1,3 @@
-# service_provider_app/app/core/he_engine.py
 import base64
 
 import tenseal as ts

@@ -1,4 +1,3 @@
-# client_app/app/modules/auth/security.py
 from datetime import datetime, timedelta, timezone
 
 import jwt

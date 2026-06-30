@@ -1,24 +1,19 @@
-# client_app/app/modules/poi_search/scenarios/nearest_k.py
-
 import base64
 import math
 import os
 from typing import cast
 
-# Must match the reference subtracted from poi.csv lat_m / lon_m columns.
 _LAT_REF_M = 5_891_000.0
 _LON_REF_M = 2_617_000.0
 
 
 def _degrees_to_meters(lat_deg: float, lon_deg: float) -> tuple[float, float]:
-    """WGS-84 degrees → full EPSG:3857 meters (unshifted)."""
     lon_m = lon_deg * 20_037_508.34 / 180.0
     lat_m = math.log(math.tan(math.pi / 4.0 + math.radians(lat_deg) / 2.0)) * (20_037_508.34 / math.pi)
     return lat_m, lon_m
 
 
 def _degrees_to_shifted_meters(lat_deg: float, lon_deg: float) -> tuple[float, float]:
-    """WGS-84 degrees → EPSG:3857 meters, then subtract the dataset origin."""
     lat_m, lon_m = _degrees_to_meters(lat_deg, lon_deg)
     return lat_m - _LAT_REF_M, lon_m - _LON_REF_M
 
@@ -46,7 +41,6 @@ def _b64len(s: str) -> int:
 
 
 def _compute_payload_sizes(scheme: str, prepared: dict) -> dict:
-    """Returns ciphertext_bytes and key_bytes for the prepared query."""
     if scheme == "plaintext":
         return {"ciphertext_bytes": 0, "key_bytes": 0}
 
@@ -102,8 +96,6 @@ async def _execute_single_scheme(request: NearestKClientRequest) -> dict:
             detail="Internal error: _execute_single_scheme cannot run scheme='all'.",
         )
 
-    # Plaintext sends full EPSG:3857 coords to PostGIS; FHE schemes use
-    # shifted coords (reference subtracted) to keep values small for FHE.
     lat_m_full, lon_m_full = _degrees_to_meters(request.latitude, request.longitude)
     lat_m = lat_m_full - _LAT_REF_M
     lon_m = lon_m_full - _LON_REF_M
@@ -112,7 +104,6 @@ async def _execute_single_scheme(request: NearestKClientRequest) -> dict:
     total_timer = StepTimer()
 
     if request.scheme == "openfhe_ss":
-        # Validate the category has enough POIs before generating keys.
         count_response = await get_from_service_provider(
             f"/service/poi/category-count?category={request.category}"
         )
@@ -137,8 +128,6 @@ async def _execute_single_scheme(request: NearestKClientRequest) -> dict:
         from ....core.openfhe_ss_runtime_instance import get_openfhe_ss_runtime
         rt = get_openfhe_ss_runtime()
 
-        # Single-round key upload: CC + public key + eval mult keys only.
-        # EvalMinSchemeSwitching runs on the client, so no switching keys upload needed.
         key_files = {
             "crypto_context": rt.serialize_crypto_context_to_file(),
             "public_key": rt.serialize_public_key_to_file(),
@@ -166,7 +155,6 @@ async def _execute_single_scheme(request: NearestKClientRequest) -> dict:
                 detail=f"OpenFHE SS key upload did not return key_id: {key_response}",
             )
 
-        # --- Step 2: evaluate (vectorised dist² on server; argmin via SS on client) ---
         evaluate_timer = StepTimer()
         raw_response = await post_to_service_provider(
             "/service/poi/openfhe-ss/evaluate",
@@ -318,7 +306,6 @@ async def _execute_single_scheme(request: NearestKClientRequest) -> dict:
         )
         parse_response_ms = parse_timer.elapsed_ms()
 
-        # Concrete always returns k=1 — override k in the response for clarity.
         request = request.model_copy(update={"k": 1})
 
         total_ms = total_timer.elapsed_ms()

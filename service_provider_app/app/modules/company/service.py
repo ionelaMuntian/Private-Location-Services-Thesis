@@ -1,5 +1,3 @@
-# service_provider_app/app/modules/company/service.py
-
 from .openfhe_compliance_engine import OpenFHEComplianceEngine
 from .schemas import ComplianceEvaluationRequest
 

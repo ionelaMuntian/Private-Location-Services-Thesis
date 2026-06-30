@@ -74,7 +74,7 @@ export default function LocationSharingPage() {
           return;
         }
       } catch {
-        // keep polling on transient errors
+
       }
 
       pollTimerRef.current = setTimeout(

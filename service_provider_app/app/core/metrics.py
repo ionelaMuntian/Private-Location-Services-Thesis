@@ -1,4 +1,3 @@
-# service_provider_app/app/core/metrics.py
 from time import perf_counter
 
 

@@ -1,4 +1,3 @@
-# service_provider_app/app/modules/poi_search/engines/ckks_engine.py
 from .base import ServiceProviderEngine
 from ....core.he_engine import (
     dump_ckks_vector,

@@ -1,5 +1,3 @@
-# service_provider_app/app/core/concrete_server_runtime.py
-
 import base64
 import json
 from pathlib import Path
@@ -39,11 +37,6 @@ def _find_server_path(n: int) -> Path:
 
 
 class ConcreteServerRuntime:
-    """
-    Loads all compiled Concrete server circuits at startup and dispatches
-    evaluation to the circuit matching the requested N.
-    """
-
     def __init__(self) -> None:
         self._servers: dict[int, fhe.Server] = {}
 
@@ -52,7 +45,6 @@ class ConcreteServerRuntime:
                 path = _find_server_path(n)
                 self._servers[n] = fhe.Server.load(path)
             except FileNotFoundError:
-                # Allow partial availability — missing circuits raise at query time.
                 pass
 
     def run_find_minimum(
@@ -62,13 +54,6 @@ class ConcreteServerRuntime:
         encrypted_user_coords_b64: str,
         items: list,
     ) -> dict:
-        """
-        Runs the N-POI find-minimum circuit.
-
-        Returns:
-          {"best_id": <b64>, "best_dist2": <b64>}
-          Both values are encrypted — the server never decrypts them.
-        """
         if n not in self._servers:
             raise ValueError(
                 f"Concrete server circuit for N={n} is not loaded. "
@@ -91,7 +76,6 @@ class ConcreteServerRuntime:
         encrypted_qx = fhe.Value.deserialize(_b64decode(user_payload["enc_qx"]))
         encrypted_qy = fhe.Value.deserialize(_b64decode(user_payload["enc_qy"]))
 
-        # Build positional args: qx_enc, qy_enc, p1x, p1y, p1_id, ..., pNx, pNy, pN_id
         args: list = [encrypted_qx, encrypted_qy]
         for item in items:
             args += [int(item.px), int(item.py), int(item.id)]

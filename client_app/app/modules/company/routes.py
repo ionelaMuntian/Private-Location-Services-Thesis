@@ -1,4 +1,3 @@
-# client_app/app/modules/company/routes.py
 from fastapi import APIRouter, Depends, Query
 
 from ..auth.dependencies import get_current_user
@@ -20,10 +19,8 @@ from .schemas import (
 )
 from .service import CompanyService
 
-
 router = APIRouter()
 service = CompanyService()
-
 
 @router.post("/companies", response_model=CompanyResponse)
 def create_company(
@@ -31,7 +28,6 @@ def create_company(
     current_user: dict = Depends(get_current_user),
 ):
     return service.create_company(request, current_user)
-
 
 @router.put("/companies/{company_id}", response_model=CompanyResponse)
 def update_company(

@@ -1,5 +1,3 @@
-# client_app/app/core/concrete_client_runtime.py
-
 import base64
 import json
 from pathlib import Path
@@ -25,11 +23,6 @@ def _specs_path(n: int) -> Path:
 
 
 class ConcreteClientRuntime:
-    """
-    Client-side Concrete runtime for a specific N (number of POI candidates).
-
-    One instance per query — holds generated keys for that query's N value.
-    """
 
     def __init__(self, n: int) -> None:
         if n not in SUPPORTED_N:
@@ -62,14 +55,6 @@ class ConcreteClientRuntime:
         return self.client.evaluation_keys.serialize()
 
     def encrypt_user_coords(self, qx: int, qy: int) -> str:
-        """
-        Encrypts the user's two coordinates.
-
-        The circuit has 2 + N*3 inputs total.  Only qx_rel and qy_rel are
-        encrypted; the remaining N*(px, py, id) slots are clear POI inputs.
-        Dummy clear values (0 / 1) are passed here only to satisfy
-        client.encrypt() — they are replaced with real POI data at evaluation.
-        """
         self.ensure_keys()
 
         args: list = [int(qx), int(qy)]
@@ -85,12 +70,6 @@ class ConcreteClientRuntime:
         return _b64encode(json.dumps(payload).encode("utf-8"))
 
     def decrypt_top1(self, encrypted_result: dict) -> dict:
-        """
-        Decrypts the encrypted (best_id, best_dist2) returned by the server.
-
-        The server performed the minimum-finding inside the FHE circuit.
-        The client only decrypts the result — no sorting here.
-        """
         self.ensure_keys()
 
         best_id_value = fhe.Value.deserialize(_b64decode(encrypted_result["best_id"]))

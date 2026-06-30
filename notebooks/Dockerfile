@@ -5,7 +5,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     cmake \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip install --no-cache-dir \
+RUN pip install --no-cache-dir --timeout 300 \
+    concrete-ml==1.8.0 \
+    imbalanced-learn==0.12.4
+
+RUN pip install --no-cache-dir --timeout 300 \
     jupyterlab \
     jupytext \
     pandas \
@@ -13,8 +17,7 @@ RUN pip install --no-cache-dir \
     "scikit-learn==1.4.0" \
     joblib \
     matplotlib \
-    seaborn \
-    concrete-ml==1.8.0
+    seaborn
 
 WORKDIR /notebooks
 

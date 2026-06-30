@@ -1,4 +1,3 @@
-# client_app/app/modules/poi_search/scenarios/categories.py
 from ....infrastructure.grpc_client import get_from_service_provider
 
 

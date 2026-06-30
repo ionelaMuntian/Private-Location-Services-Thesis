@@ -1,4 +1,3 @@
-# service_provider_app/app/grpc_server.py
 import asyncio
 import base64
 import json
@@ -27,7 +26,7 @@ from .modules.poi_search.service import PoiSearchServiceProviderService
 poi_service = PoiSearchServiceProviderService()
 company_service = CompanyComplianceService()
 
-GRPC_MAX_MESSAGE_SIZE = -1  # unlimited; senders are responsible for keeping payloads sane
+GRPC_MAX_MESSAGE_SIZE = -1
 
 
 def _json_response(

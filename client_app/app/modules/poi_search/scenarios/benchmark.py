@@ -1,5 +1,3 @@
-# client_app/app/modules/poi_search/scenarios/benchmark.py
-
 import json
 import math
 import uuid
@@ -13,8 +11,6 @@ SUPPORTED_STANDARD_SCHEMES = ["plaintext", "ckks", "concrete", "openfhe_ss"]
 SUPPORTED_CONCRETE_N = [1, 5, 12, 13, 14, 15]
 SUPPORTED_OPENFHE_N = [1, 5, 12, 13, 14, 15, 22, 43, 62, 122]
 
-# Map from POI count → category that naturally has that many POIs in the dataset.
-# Used for openfhe_ss N-scaling runs (each run uses the category with ~N real POIs).
 _OPENFHE_N_CATEGORY = {
     1: "hospital",
     5: "school",
@@ -87,7 +83,6 @@ def _build_run_entry(scheme: str, n_candidates: int | None, result: dict) -> dic
 
 
 def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """Great-circle distance in km between two WGS-84 points."""
     R = 6371.0
     phi1, phi2 = math.radians(lat1), math.radians(lat2)
     dphi = math.radians(lat2 - lat1)
@@ -97,30 +92,40 @@ def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
 
 
 def _attach_accuracy(runs: list) -> None:
-    """
-    Compares each run's top-1 result against the plaintext run (ground truth).
-
-    Adds an `accuracy` dict to every run:
-      top1_match       — bool: same POI ID as plaintext
-      poi_distance_km  — geographic distance between plaintext POI (A) and
-                         FHE-returned POI (B); 0.0 when both are the same POI.
-    For error runs or when plaintext is missing, `accuracy` is None.
-    """
-    pt = next(
+    standard_pt = next(
         (r for r in runs
          if r.get("scheme") == "plaintext"
+         and r.get("n_candidates") is None
          and not r.get("error")
          and r.get("result")),
         None,
     )
 
-    true_id: int | None = pt["result"].get("id") if pt else None
-    true_lat: float | None = pt["result"].get("latitude") if pt else None
-    true_lon: float | None = pt["result"].get("longitude") if pt else None
+    n_pt_map: dict[int, dict] = {}
+    for r in runs:
+        n = r.get("n_candidates")
+        if (r.get("scheme") == "plaintext"
+                and n is not None
+                and not r.get("error")
+                and r.get("result")):
+            n_pt_map[n] = r
 
     for run in runs:
+        if run.get("scheme") == "plaintext":
+            run["accuracy"] = {"top1_match": True, "poi_distance_km": 0.0}
+            continue
+
         if run.get("error"):
             run["accuracy"] = None
+            continue
+
+        n = run.get("n_candidates")
+        pt = n_pt_map.get(n) if n is not None else None
+        if pt is None:
+            pt = standard_pt
+
+        if pt is None:
+            run["accuracy"] = {}
             continue
 
         result = run.get("result") or {}
@@ -128,9 +133,9 @@ def _attach_accuracy(runs: list) -> None:
         pred_lat = result.get("latitude")
         pred_lon = result.get("longitude")
 
-        if run.get("scheme") == "plaintext":
-            run["accuracy"] = {"top1_match": True, "poi_distance_km": 0.0}
-            continue
+        true_id = pt["result"].get("id")
+        true_lat = pt["result"].get("latitude")
+        true_lon = pt["result"].get("longitude")
 
         acc: dict = {}
         if true_id is not None and pred_id is not None:
@@ -183,35 +188,40 @@ async def execute_benchmark(
                 "sizes": {},
             })
 
-    # Explicit concrete N runs — each N maps to the category that has exactly N POIs.
-    # The server always returns all POIs for a category, so the category must have
-    # exactly N items for the circuit to match.
+    _CONCRETE_MAX_RETRIES = 3
     for n in concrete_n_values:
         if n not in SUPPORTED_CONCRETE_N:
             continue
         cat = _OPENFHE_N_CATEGORY.get(n, category)
-        try:
-            request = NearestKClientRequest(
-                category=cat,
-                k=1,
-                latitude=latitude,
-                longitude=longitude,
-                scheme="concrete",
-                n_candidates=n,
-            )
-            result = await execute_nearest_k(request)
-            runs.append(_build_run_entry("concrete", n, result))
-        except Exception as exc:
+        last_exc: Exception | None = None
+        for attempt in range(_CONCRETE_MAX_RETRIES):
+            try:
+                request = NearestKClientRequest(
+                    category=cat,
+                    k=1,
+                    latitude=latitude,
+                    longitude=longitude,
+                    scheme="concrete",
+                    n_candidates=n,
+                )
+                result = await execute_nearest_k(request)
+                runs.append(_build_run_entry("concrete", n, result))
+                last_exc = None
+                break
+            except Exception as exc:
+                last_exc = exc
+                if "PBS noise" not in str(exc):
+                    break
+        if last_exc is not None:
             runs.append({
                 "label": f"concrete (N={n})",
                 "scheme": "concrete",
                 "n_candidates": n,
-                "error": str(exc),
+                "error": str(last_exc),
                 "timing": {},
                 "sizes": {},
             })
 
-    # Explicit openfhe_ss N runs — each N maps to the category that has ~N real POIs
     for n in (openfhe_n_values or []):
         if n not in SUPPORTED_OPENFHE_N:
             continue
@@ -230,6 +240,37 @@ async def execute_benchmark(
             runs.append({
                 "label": f"openfhe_ss (N={n})",
                 "scheme": "openfhe_ss",
+                "n_candidates": n,
+                "error": str(exc),
+                "timing": {},
+                "sizes": {},
+            })
+
+    _all_n_benchmarked: set[int] = set()
+    for n in concrete_n_values:
+        if n in SUPPORTED_CONCRETE_N:
+            _all_n_benchmarked.add(n)
+    for n in (openfhe_n_values or []):
+        if n in SUPPORTED_OPENFHE_N:
+            _all_n_benchmarked.add(n)
+
+    for n in sorted(_all_n_benchmarked):
+        cat = _OPENFHE_N_CATEGORY.get(n, category)
+        try:
+            request = NearestKClientRequest(
+                category=cat,
+                k=1,
+                latitude=latitude,
+                longitude=longitude,
+                scheme="plaintext",
+                n_candidates=n,
+            )
+            result = await execute_nearest_k(request)
+            runs.append(_build_run_entry("plaintext", n, result))
+        except Exception as exc:
+            runs.append({
+                "label": f"plaintext (N={n})",
+                "scheme": "plaintext",
                 "n_candidates": n,
                 "error": str(exc),
                 "timing": {},

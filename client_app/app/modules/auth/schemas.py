@@ -1,4 +1,3 @@
-# client_app/app/modules/auth/schemas.py
 from pydantic import BaseModel, EmailStr, Field
 
 

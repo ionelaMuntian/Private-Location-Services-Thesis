@@ -1,4 +1,3 @@
-# client_app/app/modules/company/service.py
 
 from fastapi import HTTPException, status
 
@@ -16,10 +15,7 @@ from .schemas import (
 
 repository = CompanyRepository()
 
-# Tolerance for CKKS approximation noise when interpreting the sign of a margin.
 EPSILON = 1e-3
-# All encrypted coordinates are divided by COORD_SCALE before encryption so that
-# the plaintext values stay in a comfortable range for CKKS (≤ ~10^3 instead of ~10^6).
 COORD_SCALE = 100.0
 
 
@@ -42,7 +38,6 @@ def _compute_plaintext_compliance(location_input: dict, company: dict) -> dict:
     office_lon    = float(company["office_lon_m"])
     office_radius = float(company["office_radius_m"])
 
-    # Bounding-box check mirrors the encrypted computation (all EvalSub, no EvalMult).
     plaintext_at_home = (
         home_lat - home_radius <= current_lat <= home_lat + home_radius
         and home_lon - home_radius <= current_lon <= home_lon + home_radius
@@ -230,8 +225,6 @@ class CompanyService:
             data=request.model_dump(),
         )
 
-        # Reset status to pending so the employee's polling no longer shows
-        # a stale result from the previous compliance check.
         repository.clear_location_status(
             user_id=current_user["id"],
             company_id=request.company_id,
@@ -331,25 +324,22 @@ class CompanyService:
         encrypted_current_lat = enc(location_input["current_lat_m"] / COORD_SCALE)
         encrypted_current_lon = enc(location_input["current_lon_m"] / COORD_SCALE)
 
-        # Encrypt home and office as bounding-box corners so the service provider
-        # can evaluate compliance with EvalSub only (no EvalMult / no level reduction).
         home_lat_sc = location_input["home_lat_m"] / COORD_SCALE
         home_lon_sc = location_input["home_lon_m"] / COORD_SCALE
-        home_r_sc   = location_input["home_radius_m"] / COORD_SCALE
+        home_r_sc = location_input["home_radius_m"] / COORD_SCALE
 
         encrypted_home_north = enc(home_lat_sc + home_r_sc)
         encrypted_home_south = enc(home_lat_sc - home_r_sc)
         encrypted_home_east  = enc(home_lon_sc + home_r_sc)
         encrypted_home_west  = enc(home_lon_sc - home_r_sc)
 
-        # Also encrypt raw values for the audit record in the compliance-jobs table.
-        encrypted_home_lat    = enc(home_lat_sc)
-        encrypted_home_lon    = enc(home_lon_sc)
+        encrypted_home_lat = enc(home_lat_sc)
+        encrypted_home_lon = enc(home_lon_sc)
         encrypted_home_radius = enc(home_r_sc)
 
         office_lat_sc = company["office_lat_m"] / COORD_SCALE
         office_lon_sc = company["office_lon_m"] / COORD_SCALE
-        office_r_sc   = company["office_radius_m"] / COORD_SCALE
+        office_r_sc = company["office_radius_m"] / COORD_SCALE
 
         encrypted_office_north = enc(office_lat_sc + office_r_sc)
         encrypted_office_south = enc(office_lat_sc - office_r_sc)
@@ -413,7 +403,6 @@ class CompanyService:
         cp = openfhe_multiparty_runtime.company_partial_decrypt_scalar
         fuse = openfhe_multiparty_runtime.company_fuse_scalar
 
-        # Compute all 12 partial decryptions (home×4, office×4, country×4).
         up_home_north = up(encrypted_margins["encrypted_home_north_margin"])
         up_home_south = up(encrypted_margins["encrypted_home_south_margin"])
         up_home_east  = up(encrypted_margins["encrypted_home_east_margin"])
@@ -421,13 +410,13 @@ class CompanyService:
 
         up_office_north = up(encrypted_margins["encrypted_office_north_margin"])
         up_office_south = up(encrypted_margins["encrypted_office_south_margin"])
-        up_office_east  = up(encrypted_margins["encrypted_office_east_margin"])
-        up_office_west  = up(encrypted_margins["encrypted_office_west_margin"])
+        up_office_east = up(encrypted_margins["encrypted_office_east_margin"])
+        up_office_west = up(encrypted_margins["encrypted_office_west_margin"])
 
         up_country_north = up(encrypted_margins["encrypted_country_north_margin"])
         up_country_south = up(encrypted_margins["encrypted_country_south_margin"])
-        up_country_east  = up(encrypted_margins["encrypted_country_east_margin"])
-        up_country_west  = up(encrypted_margins["encrypted_country_west_margin"])
+        up_country_east = up(encrypted_margins["encrypted_country_east_margin"])
+        up_country_west = up(encrypted_margins["encrypted_country_west_margin"])
 
         repository.store_user_partials(
             job_id=job_id,
@@ -444,8 +433,8 @@ class CompanyService:
 
         cp_home_north = cp(encrypted_margins["encrypted_home_north_margin"])
         cp_home_south = cp(encrypted_margins["encrypted_home_south_margin"])
-        cp_home_east  = cp(encrypted_margins["encrypted_home_east_margin"])
-        cp_home_west  = cp(encrypted_margins["encrypted_home_west_margin"])
+        cp_home_east = cp(encrypted_margins["encrypted_home_east_margin"])
+        cp_home_west = cp(encrypted_margins["encrypted_home_west_margin"])
 
         cp_office_north = cp(encrypted_margins["encrypted_office_north_margin"])
         cp_office_south = cp(encrypted_margins["encrypted_office_south_margin"])
@@ -457,7 +446,6 @@ class CompanyService:
         cp_country_east  = cp(encrypted_margins["encrypted_country_east_margin"])
         cp_country_west  = cp(encrypted_margins["encrypted_country_west_margin"])
 
-        # Fuse all 12 margins.
         home_north_m = fuse(up_home_north, cp_home_north)
         home_south_m = fuse(up_home_south, cp_home_south)
         home_east_m  = fuse(up_home_east,  cp_home_east)
@@ -473,9 +461,7 @@ class CompanyService:
         east_margin  = fuse(up_country_east,  cp_country_east)
         west_margin  = fuse(up_country_west,  cp_country_west)
 
-        # Home/office: all four bbox margins must be ≥ 0 (inside the bounding box).
-        # Store the minimum as a single representative value.
-        home_margin   = min(home_north_m, home_south_m, home_east_m, home_west_m)
+        home_margin  = min(home_north_m, home_south_m, home_east_m, home_west_m)
         office_margin = min(office_north_m, office_south_m, office_east_m, office_west_m)
 
         print(

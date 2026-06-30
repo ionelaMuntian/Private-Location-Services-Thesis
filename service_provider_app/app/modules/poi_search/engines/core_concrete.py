@@ -1,5 +1,3 @@
-# service_provider_app/app/modules/poi_search/engines/core_concrete.py
-
 from time import time
 from uuid import uuid4
 
@@ -91,10 +89,6 @@ def _resolve_evaluation_keys_bytes(request: ConcreteEvaluationRequest) -> bytes:
 
 
 def execute_concrete_candidates(request: ConcreteCandidatesRequest) -> dict:
-    """
-    Returns all POIs for the requested category.
-    The client selects the appropriate circuit size and handles padding.
-    """
     total_timer = StepTimer()
     candidate_timer = StepTimer()
 
@@ -147,12 +141,6 @@ def execute_concrete_candidates(request: ConcreteCandidatesRequest) -> dict:
 
 
 def execute_concrete_evaluation(request: ConcreteEvaluationRequest) -> dict:
-    """
-    Runs the Concrete find-minimum circuit for N = len(request.items).
-
-    The server returns encrypted (best_id, best_dist2).
-    It never decrypts these values — the client decrypts after receiving them.
-    """
     n = len(request.items)
 
     if n not in SUPPORTED_N:

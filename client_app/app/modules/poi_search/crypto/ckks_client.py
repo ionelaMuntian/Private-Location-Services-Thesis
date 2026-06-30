@@ -1,4 +1,3 @@
-# client_app/app/modules/poi_search/crypto/ckks_client.py
 import tenseal as ts
 
 from .base import ClientCryptoAdapter
@@ -23,9 +22,6 @@ class CKKSClientAdapter(ClientCryptoAdapter):
             "encrypted_query": {
                 "payload": encrypted_query,
                 "metadata": {
-                    # Only send what the server strictly needs to evaluate the HE circuit.
-                    # Plaintext coordinates are NEVER included — the server must not learn
-                    # the user's location.
                     "public_context": CKKSContextManager.serialize_public_context(full_context),
                     "query_encoding": "lat_m_lon_m_vector",
                     "distance_metric": "squared_euclidean_meters",
@@ -64,6 +60,5 @@ class CKKSClientAdapter(ClientCryptoAdapter):
                 }
             )
 
-        # Sorting happens on the client after decryption — the server never sees distances.
         scored_items.sort(key=lambda x: x["distance_km"])
         return scored_items[:requested_k]

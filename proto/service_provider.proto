@@ -5,10 +5,8 @@ package thesis;
 service ServiceProviderGateway {
   rpc Call(ServiceProviderRequest) returns (ServiceProviderResponse);
 
-  // Concrete evaluation keys are huge, so we upload them using streaming gRPC.
   rpc UploadConcreteKeys(stream ConcreteKeyChunk) returns (ConcreteKeyUploadResponse);
 
-  // OpenFHE SS keys are ~2 GB raw, so we stream them too.
   rpc UploadOpenFHESSKeys(stream OpenFHESSKeyChunk) returns (OpenFHESSKeyUploadResponse);
 }
 

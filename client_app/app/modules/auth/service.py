@@ -1,4 +1,3 @@
-# client_app/app/modules/auth/service.py
 from fastapi import HTTPException, status
 
 from .repository import AuthRepository

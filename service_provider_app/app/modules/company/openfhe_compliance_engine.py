@@ -1,4 +1,3 @@
-# service_provider_app/app/modules/company/openfhe_compliance_engine.py
 from ...core.openfhe_engine import (
     dump_ciphertext,
     load_ciphertext,
@@ -16,12 +15,6 @@ class OpenFHEComplianceEngine:
         print("[Compliance] loading eval mult keys...", flush=True)
         load_eval_mult_keys(cc, metadata["eval_mult_keys"])
 
-        # All margins are computed using EvalSub only (no EvalMult / no level reduction).
-        # The bounding-box check replaces the squared-distance check, eliminating the
-        # multiplicative depth that caused CKKS MultipartyDecryptFusion to exceed its
-        # approximation error threshold.
-
-        # --- Home bounding-box margins ---
         print("[Compliance] computing home bbox margins...", flush=True)
         enc_home_north_margin = cc.EvalSub(
             load_ciphertext(payload["encrypted_home_north"]),
@@ -40,7 +33,6 @@ class OpenFHEComplianceEngine:
             load_ciphertext(payload["encrypted_home_west"]),
         )
 
-        # --- Office bounding-box margins ---
         print("[Compliance] computing office bbox margins...", flush=True)
         enc_office_north_margin = cc.EvalSub(
             load_ciphertext(payload["encrypted_office_north"]),
@@ -59,7 +51,6 @@ class OpenFHEComplianceEngine:
             load_ciphertext(payload["encrypted_office_west"]),
         )
 
-        # --- Country bounding-box margins (unchanged logic) ---
         print("[Compliance] computing country margins...", flush=True)
         enc_country_north_margin = cc.EvalSub(
             load_ciphertext(payload["encrypted_country_north"]),

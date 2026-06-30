@@ -1,4 +1,3 @@
-# client_app/app/modules/auth/routes.py
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from .dependencies import get_current_user

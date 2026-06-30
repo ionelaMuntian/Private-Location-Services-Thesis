@@ -1,4 +1,3 @@
-# client_app/app/modules/poi_search/crypto/base.py
 from abc import ABC, abstractmethod
 
 

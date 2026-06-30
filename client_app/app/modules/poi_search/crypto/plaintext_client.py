@@ -1,6 +1,4 @@
-# client_app/app/modules/poi_search/crypto/plaintext_client.py
 from .base import ClientCryptoAdapter
-
 
 class PlaintextClientAdapter(ClientCryptoAdapter):
     def prepare_query(self, latitude: float, longitude: float, k: int) -> dict:

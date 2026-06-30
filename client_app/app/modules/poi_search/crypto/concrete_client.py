@@ -1,6 +1,3 @@
-
-# client_app/app/modules/poi_search/crypto/concrete_client.py
-
 from fastapi import HTTPException
 
 from .base import ClientCryptoAdapter
@@ -11,18 +8,13 @@ from .quantization import (
     quantize_metric_coordinate,
 )
 
-# 2.2 km quantization — keeps dist² ≤ 242 (8-bit PBS, LUT=256 entries).
 quant_config = QuantizationConfig(scale_divisor=2200)
 
-# Reference subtracted from full EPSG:3857 POI coordinates to keep
-# quantized values small (0–8 range) for the FHE circuit.
-# Must match _LAT_REF_M / _LON_REF_M in nearest_k.py.
 _LAT_REF_M = 5_891_000.0
 _LON_REF_M = 2_617_000.0
 
 ORIGIN_X_Q = 0
 ORIGIN_Y_Q = 0
-
 
 class ConcreteClientAdapter(ClientCryptoAdapter):
     def _create_runtime(self, n: int) -> ConcreteClientRuntime:
@@ -35,16 +27,6 @@ class ConcreteClientAdapter(ClientCryptoAdapter):
             ) from exc
 
     def prepare_query(self, latitude: float, longitude: float, k: int, n: int = 2) -> dict:
-        """
-        Prepares the Concrete query for server-side encrypted minimum finding.
-
-        Args:
-            n: Number of POI candidates the circuit will process.
-               Must be one of SUPPORTED_N = {1, 5, 12, 13, 14, 15}.
-
-        The client encrypts only the user coordinates.
-        Concrete always returns k=1 (the single closest POI).
-        """
         if n not in SUPPORTED_N:
             raise HTTPException(
                 status_code=422,
@@ -93,23 +75,12 @@ class ConcreteClientAdapter(ClientCryptoAdapter):
         candidates: list[dict],
         local_state: dict,
     ) -> list[dict]:
-        """
-        Builds the clear/public POI inputs for the Concrete circuit.
-
-        POI coordinates are public (from the service provider DB).
-        Internal IDs 1..N are used instead of real DB IDs so values stay
-        within the compiled numeric range.
-        """
         n = int(local_state["n_candidates"])
         actual_n = len(candidates)
 
         if actual_n == 0:
             raise ValueError("Concrete: no candidates returned for the category.")
 
-        # Pad to circuit size N by cycling through real candidates.
-        # Duplicates share coordinates with their originals, so the circuit's
-        # strict `d < min_dist` comparison ensures they can never beat the real
-        # nearest POI.  All internal IDs still map to valid POI records.
         padded = list(candidates)
         for i in range(n - actual_n):
             padded.append(candidates[i % actual_n])
@@ -156,12 +127,6 @@ class ConcreteClientAdapter(ClientCryptoAdapter):
         response_data: dict,
         local_state: dict | None = None,
     ) -> list[dict]:
-        """
-        Decrypts the server's encrypted minimum result and maps internal ID
-        back to the real POI record.
-
-        No sorting is done here — the server's circuit already found the minimum.
-        """
         if local_state is None or "runtime" not in local_state:
             raise ValueError("Missing Concrete runtime in local_state.")
 

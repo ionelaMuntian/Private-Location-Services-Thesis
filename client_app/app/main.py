@@ -1,4 +1,3 @@
-# client_app/app/main.py
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -18,9 +17,6 @@ company_service = CompanyService()
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-    # Without this, Starlette's ServerErrorMiddleware sends the 500 response
-    # before CORSMiddleware can inject its headers, so the browser sees a CORS
-    # error instead of the real error message.
     return JSONResponse(
         status_code=500,
         content={"detail": f"{type(exc).__name__}: {exc}"},

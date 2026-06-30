@@ -1,4 +1,3 @@
-# client_app/app/modules/company/schemas.py
 from typing import List
 
 from pydantic import BaseModel, Field

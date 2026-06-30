@@ -1,4 +1,3 @@
-# service_provider_app/app/modules/poi_search/schemas.py
 
 from typing import Any, List, Literal
 
@@ -129,20 +128,12 @@ class ConcreteEvaluationItem(BaseModel):
     latitude: float
     longitude: float
 
-    # Clear POI coordinates after quantization and origin-shifting.
-    # These are public candidate coordinates, not user coordinates.
     px: int
     py: int
 
 
 class ConcreteEvaluationRequest(BaseModel):
-    # New optimized mode:
-    # key_id references evaluation keys previously uploaded by streaming gRPC.
     key_id: str | None = None
-
-    # Backward-compatible fallback:
-    # direct evaluation keys can still be sent, but this is not recommended
-    # because Concrete evaluation keys are extremely large.
     evaluation_keys_b64: str | None = None
 
     encrypted_user_coords_b64: str
@@ -169,8 +160,6 @@ class ConcreteEvaluationResultItem(BaseModel):
 
 
 class ConcreteSortedResult(BaseModel):
-    # Encrypted outputs of the Concrete find-minimum circuit.
-    # The server does not decrypt these values.
     best_id: str
     best_dist2: str
 
@@ -194,10 +183,7 @@ class CategoryListResponse(BaseModel):
     categories: List[str]
 
 
-
-# ---------------------------------------------------------------------------
 # OpenFHE Scheme-Switching schemas
-# ---------------------------------------------------------------------------
 
 class OpenFHESSUploadKeysRequest(BaseModel):
     crypto_context_b64: str

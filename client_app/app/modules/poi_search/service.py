@@ -1,4 +1,3 @@
-# client_app/app/modules/poi_search/service.py
 from .scenarios.benchmark import execute_benchmark, get_benchmark_history as _get_benchmark_history
 from .scenarios.performance_simulation import (
     execute_performance_simulation as _execute_simulation,

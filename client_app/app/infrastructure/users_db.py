@@ -1,4 +1,3 @@
-# client_app/app/infrastructure/users_db.py
 from contextlib import contextmanager
 from typing import Generator
 

@@ -35,9 +35,6 @@ export default function HomePage() {
           Welcome{username ? `, ${username}` : ""} to<br />
           <span>Location Services</span>
         </h1>
-        <p className="home-subheading">Select a module to get started.</p>
-
-        <p className="home-services-label">Available services</p>
 
         <div className="services-grid">
           <ServiceCard title="Nearest Points of Interest" route="/poi-search" />

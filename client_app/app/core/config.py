@@ -1,4 +1,3 @@
-# client_app/app/core/config.py
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -9,17 +8,17 @@ class Settings(BaseSettings):
     service_provider_grpc_port: int = 50051
     service_provider_base_url: str = "http://127.0.0.1:8001"
 
-    # CKKS / TenSEAL settings
+    # CKKS (froom TenSEAL)
     ckks_poly_modulus_degree: int = 8192
     ckks_coeff_mod_bit_sizes: str = "60,40,40,60"
     ckks_global_scale_bits: int = 40
 
-    # BFV / TenSEAL settings
+    # BFV  (from TenSEAL)
     bfv_poly_modulus_degree: int = 8192
     bfv_plain_modulus: int = 1032193
     bfv_scale: int = 100
 
-    # Auth DB — credentials only
+    # Auth DB
     auth_db_host: str = "127.0.0.1"
     auth_db_port: int = 5432
     auth_db_name: str = "auth_db"
@@ -27,14 +26,14 @@ class Settings(BaseSettings):
     auth_db_password: str
     auth_db_schema: str = "auth"
 
-    # Users DB — home locations, location inputs, location status
+    # Users DB: home locations, location inputs, location status
     users_db_host: str = "127.0.0.1"
     users_db_port: int = 5434
     users_db_name: str = "users_data"
     users_db_user: str = "postgres"
     users_db_password: str
 
-    # Company DB — companies, company_users, compliance_jobs
+    # Company DB: companies, company_users, compliance_jobs
     company_db_host: str = "127.0.0.1"
     company_db_port: int = 5435
     company_db_name: str = "company_data"

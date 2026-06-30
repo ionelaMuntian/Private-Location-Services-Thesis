@@ -1,4 +1,3 @@
-# client_app/app/modules/company/repository.py
 from psycopg.rows import dict_row
 
 from ...core.config import settings
@@ -17,9 +16,7 @@ class CompanyRepository:
         self._init_company_db()
         self._init_users_db()
 
-    # ------------------------------------------------------------------
     # Schema / table creation
-    # ------------------------------------------------------------------
 
     def _init_company_db(self) -> None:
         create_schema = f"CREATE SCHEMA IF NOT EXISTS {_COMPANY_SCHEMA};"
@@ -182,9 +179,7 @@ class CompanyRepository:
                 cur.execute(create_location_status)
             conn.commit()
 
-    # ------------------------------------------------------------------
-    # Company CRUD (company_data DB)
-    # ------------------------------------------------------------------
+    # Company CRUD
 
     def create_company(self, data: dict, admin_user_id: int) -> dict:
         sql = f"""
@@ -351,9 +346,7 @@ class CompanyRepository:
 
         return row is not None
 
-    # ------------------------------------------------------------------
-    # Company membership (company_data DB)
-    # ------------------------------------------------------------------
+    # Company membership
 
     def add_employee_to_company(self, company_id: int, user_id: int) -> None:
         sql = f"""
@@ -404,9 +397,7 @@ class CompanyRepository:
 
         return [dict(row) for row in rows]
 
-    # ------------------------------------------------------------------
-    # User lookups (auth_data DB — read-only cross-reference)
-    # ------------------------------------------------------------------
+    # User lookups
 
     def get_user_summary(self, user_id: int) -> dict | None:
         sql = f"""
@@ -440,9 +431,7 @@ class CompanyRepository:
 
         return {row["id"]: dict(row) for row in rows}
 
-    # ------------------------------------------------------------------
-    # User data (users_data DB)
-    # ------------------------------------------------------------------
+    # User data
 
     def save_latest_location_input(self, user_id: int, data: dict) -> None:
         sql = f"""
@@ -593,7 +582,6 @@ class CompanyRepository:
         return dict(row) if row else None
 
     def get_users_status(self, company_id: int) -> list[dict]:
-        # Step 1: employee user_ids from company_data
         with get_company_connection() as conn:
             with conn.cursor(row_factory=dict_row) as cur:
                 cur.execute(
@@ -605,10 +593,8 @@ class CompanyRepository:
         if not user_ids:
             return []
 
-        # Step 2: user info from auth_data
         users_by_id = self._get_users_by_ids(user_ids)
 
-        # Step 3: location statuses from users_data
         with get_users_connection() as conn:
             with conn.cursor(row_factory=dict_row) as cur:
                 cur.execute(
@@ -624,7 +610,6 @@ class CompanyRepository:
                 )
                 statuses_by_id = {row["user_id"]: dict(row) for row in cur.fetchall()}
 
-        # Step 4: combine and return sorted by username
         result = []
         for uid in user_ids:
             user = users_by_id.get(uid, {})
@@ -644,9 +629,7 @@ class CompanyRepository:
 
         return sorted(result, key=lambda x: x.get("username") or "")
 
-    # ------------------------------------------------------------------
-    # Compliance jobs (company_data DB)
-    # ------------------------------------------------------------------
+    # Compliance jobs
 
     def create_compliance_job(self, user_id: int, data: dict, company: dict) -> dict:
         sql = f"""
