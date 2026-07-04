@@ -269,18 +269,15 @@
   font-weight: 600;
 }
 
-.stats-avg-separator td {
-  background: #e2ddd4;
-  border-top: 2px solid #b8b0a0;
-  font-weight: 600;
-  font-size: 0.85rem;
-  color: #5a5349;
-  text-align: center;
-  letter-spacing: 0.02em;
+.stats-avg-summary {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(29, 52, 97, 0.1);
 }
 
-.stats-avg-row td {
-  background: #eae6dc;
+.stats-avg-metrics {
+  grid-template-columns: repeat(2, minmax(0, 220px));
+  margin-bottom: 0;
 }
 
 .stats-sim-divider {

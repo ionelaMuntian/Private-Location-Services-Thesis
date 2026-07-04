@@ -15,8 +15,8 @@ const BENCHMARK_TIMEOUT_MS = 7200000;
 const SIM_TIMEOUT_MS = 14400000;
 
 const SCHEME_OPTIONS = ["plaintext", "concrete", "openfhe_ss"];
-const CONCRETE_N_OPTIONS = [1, 5, 12, 13, 14, 15];
-const OPENFHE_N_OPTIONS = [1, 5, 12, 13, 14, 15];
+const CONCRETE_N_OPTIONS = [1, 5, 12, 14, 15];
+const OPENFHE_N_OPTIONS = [1, 5, 12, 14, 15];
 const DEFAULT_LAT = 46.77;
 const DEFAULT_LON = 23.59;
 
@@ -60,6 +60,18 @@ function haversineKm(lat1, lon1, lat2, lon2) {
   const dlam = (lon2 - lon1) * Math.PI / 180;
   const a = Math.sin(dphi / 2) ** 2 + Math.cos(phi1) * Math.cos(phi2) * Math.sin(dlam / 2) ** 2;
   return R * 2 * Math.asin(Math.sqrt(a));
+}
+
+function ownDistanceKm(session, run) {
+  if (!session || run?.result?.latitude == null || run?.result?.longitude == null) return null;
+  return haversineKm(session.latitude, session.longitude, run.result.latitude, run.result.longitude);
+}
+
+function distanceDeviationKm(session, run, groundTruthRun) {
+  const ownDist = ownDistanceKm(session, run);
+  const gtDist = ownDistanceKm(session, groundTruthRun);
+  if (ownDist == null || gtDist == null) return null;
+  return Math.abs(ownDist - gtDist);
 }
 
 function CollapsibleCard({ title, children, badge, defaultOpen = true }) {
@@ -242,6 +254,13 @@ export default function StatisticsPage() {
   const baseRuns = runs.filter((r) => r.scheme === "plaintext" && r.n_candidates == null);
   const plaintextNRuns = runs.filter((r) => r.scheme === "plaintext" && r.n_candidates != null);
 
+  // Ground-truth lookups are matched by label (not n_candidates) because the
+  // server can report a plaintext run's candidate_count as its returned count
+  // rather than the requested N, which would otherwise break the N match.
+  const plaintextBaseRun = baseRuns.find((r) => !r.error) || null;
+  const plaintextGroundTruthForN = (n) =>
+    plaintextNRuns.find((r) => !r.error && r.label === `plaintext (N=${n})`) || null;
+
   const allNValues = [...new Set(
     allNSpecificRuns.map((r) => r.n_candidates).filter((n) => n != null)
   )].sort((a, b) => a - b);
@@ -277,13 +296,32 @@ export default function StatisticsPage() {
     }));
 
   const accuracyLineData = allNValues.map((n) => {
-    const cr = allNSpecificRuns.find((r) => r.scheme === "concrete" && r.n_candidates === n && !r.error && r.accuracy != null);
-    const or = allNSpecificRuns.find((r) => r.scheme === "openfhe_ss" && r.n_candidates === n && !r.error && r.accuracy != null);
+    const pt = plaintextGroundTruthForN(n);
+    const cr = allNSpecificRuns.find((r) => r.scheme === "concrete" && r.n_candidates === n && !r.error);
+    const or = allNSpecificRuns.find((r) => r.scheme === "openfhe_ss" && r.n_candidates === n && !r.error);
     const entry = { N: n };
-    if (cr) entry["Concrete"] = +(cr.accuracy?.poi_distance_km ?? 0).toFixed(4);
-    if (or) entry["OpenFHE SS"] = +(or.accuracy?.poi_distance_km ?? 0).toFixed(4);
+    const crDeviation = cr ? distanceDeviationKm(currentSession, cr, pt) : null;
+    const orDeviation = or ? distanceDeviationKm(currentSession, or, pt) : null;
+    if (crDeviation != null) entry["Concrete"] = +crDeviation.toFixed(4);
+    if (orDeviation != null) entry["OpenFHE SS"] = +orDeviation.toFixed(4);
     return entry;
   }).filter((e) => e.Concrete != null || e["OpenFHE SS"] != null);
+
+  const concreteAvgDeviationKm = (() => {
+    const vals = allNSpecificRuns
+      .filter((r) => r.scheme === "concrete" && !r.error)
+      .map((r) => distanceDeviationKm(currentSession, r, plaintextGroundTruthForN(r.n_candidates)))
+      .filter((v) => v != null);
+    return vals.length ? vals.reduce((s, v) => s + v, 0) / vals.length : null;
+  })();
+
+  const openfheAvgDeviationKm = (() => {
+    const vals = allNSpecificRuns
+      .filter((r) => r.scheme === "openfhe_ss" && !r.error)
+      .map((r) => distanceDeviationKm(currentSession, r, plaintextGroundTruthForN(r.n_candidates)))
+      .filter((v) => v != null);
+    return vals.length ? vals.reduce((s, v) => s + v, 0) / vals.length : null;
+  })();
 
   const lineData = allNValues.map((n) => {
     const cr = concreteNRuns.find((r) => r.n_candidates === n);
@@ -310,7 +348,7 @@ export default function StatisticsPage() {
                 Location Sharing
               </button>
               <button className="poi-nav-item" type="button" onClick={() => navigate("/anomaly-detection")}>
-                Impossible Travel Detection
+                Risk Based Authentication
               </button>
               <button className="poi-nav-item active" type="button">
                 Statistics &amp; Benchmarks
@@ -336,15 +374,15 @@ export default function StatisticsPage() {
                 <h3>Benchmark Configuration</h3>
               </div>
 
-              <div className="stats-config-grid">
-                <label className="stats-label">
+              <form className="poi-form" onSubmit={(e) => { e.preventDefault(); handleRunBenchmark(); }}>
+                <label>
                   Latitude (°)
-                  <input type="number" value={lat} onChange={(e) => setLat(e.target.value)} className="stats-input" step="any" />
+                  <input type="number" value={lat} onChange={(e) => setLat(e.target.value)} step="any" />
                 </label>
 
-                <label className="stats-label">
+                <label>
                   Longitude (°)
-                  <input type="number" value={lon} onChange={(e) => setLon(e.target.value)} className="stats-input" step="any" />
+                  <input type="number" value={lon} onChange={(e) => setLon(e.target.value)} step="any" />
                 </label>
 
                 <div className="stats-label">
@@ -384,15 +422,17 @@ export default function StatisticsPage() {
                     </div>
                   </div>
                 )}
-              </div>
 
-              <button
-                className="primary-btn stats-run-btn"
-                onClick={handleRunBenchmark}
-                disabled={loading || (selectedSchemes.length === 0 && selectedN.length === 0)}
-              >
-                {loading ? "Running benchmark…" : "Run Benchmark"}
-              </button>
+                <div className="full-width poi-form-actions">
+                  <button
+                    className="primary-btn"
+                    type="submit"
+                    disabled={loading || (selectedSchemes.length === 0 && selectedN.length === 0)}
+                  >
+                    {loading ? "Running benchmark…" : "Run Benchmark"}
+                  </button>
+                </div>
+              </form>
 
               {loading && progress && <p className="stats-progress">{progress}</p>}
               {error && <div className="poi-alert poi-alert-error">{error}</div>}
@@ -483,7 +523,7 @@ export default function StatisticsPage() {
             )}
 
             {concreteNRuns.length > 0 && (
-              <CollapsibleCard title="Concrete — N-Scaling Performance">
+              <CollapsibleCard title="Concrete: N-Scaling Performance">
                 <div className="stats-charts-grid">
                   {concretePhaseLineData.length > 0 && (
                     <div className="stats-chart-block">
@@ -523,7 +563,7 @@ export default function StatisticsPage() {
             )}
 
             {openfheNRuns.length > 0 && (
-              <CollapsibleCard title="OpenFHE SS — N-Scaling Performance">
+              <CollapsibleCard title="OpenFHE SS: N-Scaling Performance">
                 <div className="stats-charts-grid">
                   {openfhePhaseLineData.length > 0 && (
                     <div className="stats-chart-block">
@@ -588,7 +628,7 @@ export default function StatisticsPage() {
               </CollapsibleCard>
             )}
 
-            {successRuns.some((r) => r.accuracy != null) && (
+            {successRuns.some((r) => r.result?.latitude != null) && (
               <CollapsibleCard title="Result Accuracy">
                 <div className="stats-plain-wrap">
                   <table className="stats-plain-table">
@@ -602,25 +642,24 @@ export default function StatisticsPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {baseRuns.filter((r) => !r.error && r.accuracy != null).map((r) => {
+                      {baseRuns.filter((r) => !r.error).map((r) => {
                         const isPlaintext = r.scheme === "plaintext";
-                        const trueDist = (currentSession?.latitude != null && r.result?.latitude != null)
-                          ? haversineKm(currentSession.latitude, currentSession.longitude, r.result.latitude, r.result.longitude)
-                          : null;
+                        const trueDist = ownDistanceKm(currentSession, r);
+                        const deviation = isPlaintext ? null : distanceDeviationKm(currentSession, r, plaintextBaseRun);
                         return (
                           <tr key={r.label}>
                             <td>{r.n_candidates ?? "—"}</td>
                             <td><strong>{r.label}</strong></td>
                             <td>{r.result?.name ?? "—"}</td>
                             <td>{trueDist != null ? trueDist.toFixed(4) : "—"}</td>
-                            <td>{isPlaintext ? "—" : r.accuracy?.poi_distance_km != null ? r.accuracy.poi_distance_km.toFixed(4) : "—"}</td>
+                            <td>{deviation != null ? deviation.toFixed(4) : "—"}</td>
                           </tr>
                         );
                       })}
                       {allNValues.flatMap((n) => {
-                        const pt = plaintextNRuns.find((r) => r.n_candidates === n && !r.error && r.accuracy != null);
-                        const cr = allNSpecificRuns.find((r) => r.scheme === "concrete" && r.n_candidates === n && !r.error && r.accuracy != null);
-                        const or = allNSpecificRuns.find((r) => r.scheme === "openfhe_ss" && r.n_candidates === n && !r.error && r.accuracy != null);
+                        const pt = plaintextGroundTruthForN(n);
+                        const cr = allNSpecificRuns.find((r) => r.scheme === "concrete" && r.n_candidates === n && !r.error);
+                        const or = allNSpecificRuns.find((r) => r.scheme === "openfhe_ss" && r.n_candidates === n && !r.error);
                         const schemeRows = [
                           pt ? { label: "Plaintext", run: pt, isPlaintext: true } : null,
                           cr ? { label: "Concrete", run: cr, isPlaintext: false } : null,
@@ -628,10 +667,8 @@ export default function StatisticsPage() {
                         ].filter(Boolean);
                         if (schemeRows.length === 0) return [];
                         return schemeRows.map(({ label, run, isPlaintext }, idx) => {
-                          const acc = run.accuracy;
-                          const trueDist = (currentSession?.latitude != null && run.result?.latitude != null)
-                            ? haversineKm(currentSession.latitude, currentSession.longitude, run.result.latitude, run.result.longitude)
-                            : null;
+                          const trueDist = ownDistanceKm(currentSession, run);
+                          const deviation = isPlaintext ? null : distanceDeviationKm(currentSession, run, pt);
                           return (
                             <tr key={run.label}>
                               {idx === 0 && (
@@ -640,45 +677,34 @@ export default function StatisticsPage() {
                               <td>{label}</td>
                               <td>{run.result?.name ?? "—"}</td>
                               <td>{trueDist != null ? trueDist.toFixed(4) : "—"}</td>
-                              <td>{isPlaintext ? "—" : acc?.poi_distance_km != null ? acc.poi_distance_km.toFixed(4) : "—"}</td>
+                              <td>{deviation != null ? deviation.toFixed(4) : "—"}</td>
                             </tr>
                           );
                         });
                       })}
                     </tbody>
-                    {(() => {
-                      const cVals = allNSpecificRuns
-                        .filter((r) => r.scheme === "concrete" && !r.error && r.accuracy?.poi_distance_km != null)
-                        .map((r) => r.accuracy.poi_distance_km);
-                      const oVals = allNSpecificRuns
-                        .filter((r) => r.scheme === "openfhe_ss" && !r.error && r.accuracy?.poi_distance_km != null)
-                        .map((r) => r.accuracy.poi_distance_km);
-                      const cAvg = cVals.length ? cVals.reduce((s, v) => s + v, 0) / cVals.length : null;
-                      const oAvg = oVals.length ? oVals.reduce((s, v) => s + v, 0) / oVals.length : null;
-                      if (cAvg == null && oAvg == null) return null;
-                      return (
-                        <tfoot>
-                          <tr className="stats-avg-separator">
-                            <td colSpan={5}>Average deviation from plaintext ground truth</td>
-                          </tr>
-                          <tr className="stats-avg-row">
-                            <td rowSpan={2}><strong>Avg</strong></td>
-                            <td>Concrete</td>
-                            <td>—</td>
-                            <td>—</td>
-                            <td><strong>{cAvg != null ? cAvg.toFixed(4) : "—"}</strong></td>
-                          </tr>
-                          <tr className="stats-avg-row">
-                            <td>OpenFHE SS</td>
-                            <td>—</td>
-                            <td>—</td>
-                            <td><strong>{oAvg != null ? oAvg.toFixed(4) : "—"}</strong></td>
-                          </tr>
-                        </tfoot>
-                      );
-                    })()}
                   </table>
                 </div>
+
+                {(concreteAvgDeviationKm != null || openfheAvgDeviationKm != null) && (
+                  <div className="stats-avg-summary">
+                    <p className="stats-chart-block-title">Average deviation from plaintext ground truth</p>
+                    <div className="poi-simple-metrics stats-avg-metrics">
+                      <div className="poi-simple-metric-card">
+                        <span className="poi-simple-metric-label">Concrete</span>
+                        <strong className="poi-simple-metric-value">
+                          {concreteAvgDeviationKm != null ? `${concreteAvgDeviationKm.toFixed(4)} km` : "—"}
+                        </strong>
+                      </div>
+                      <div className="poi-simple-metric-card">
+                        <span className="poi-simple-metric-label">OpenFHE SS</span>
+                        <strong className="poi-simple-metric-value">
+                          {openfheAvgDeviationKm != null ? `${openfheAvgDeviationKm.toFixed(4)} km` : "—"}
+                        </strong>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {accuracyLineData.length > 0 && (
                   <div className="stats-accuracy-chart">

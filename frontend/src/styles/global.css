@@ -28,6 +28,30 @@ button {
   padding: 32px;
 }
 
+.app-band {
+  position: fixed;
+  left: 0;
+  right: 0;
+  height: 56px;
+  background: #1d3461;
+  z-index: 40;
+}
+
+.app-band-top {
+  top: 0;
+}
+
+.app-band-bottom {
+  bottom: 0;
+}
+
+.app-content {
+  padding-top: 56px;
+  padding-bottom: 56px;
+  min-height: 100vh;
+  box-sizing: border-box;
+}
+
 .primary-btn {
   border: none;
   border-radius: 12px;

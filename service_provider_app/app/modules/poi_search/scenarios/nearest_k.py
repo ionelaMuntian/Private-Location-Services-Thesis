@@ -34,6 +34,7 @@ def execute_nearest_k(request: ServiceProviderNearestKRequest) -> dict:
             latitude_m=request.plaintext_query.latitude_m,
             longitude_m=request.plaintext_query.longitude_m,
         )
+        candidate_count = repository.count_by_category(request.category)
         candidate_selection_ms = candidate_timer.elapsed_ms()
         total_ms = total_timer.elapsed_ms()
 
@@ -47,7 +48,7 @@ def execute_nearest_k(request: ServiceProviderNearestKRequest) -> dict:
                     "total_ms": total_ms,
                 },
                 "workload": {
-                    "candidate_count": len(results),
+                    "candidate_count": candidate_count,
                     "returned_count": len(results),
                     "k": request.k,
                     "category": request.category,

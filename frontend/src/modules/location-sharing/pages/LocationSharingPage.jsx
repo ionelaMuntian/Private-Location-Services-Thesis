@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
+import "../../poi-search/styles/poi-search.css";
 import "../styles/location-sharing.css";
 
 const API_BASE_URL = "http://127.0.0.1:8000";
@@ -242,9 +243,17 @@ export default function LocationSharingPage() {
       <div className="location-shell">
         <aside className="location-sidebar">
           <div className="location-sidebar-card">
-            <p className="location-sidebar-kicker">Employee</p>
+            <p className="location-sidebar-kicker">Services</p>
 
             <nav className="location-sidebar-nav">
+              <button
+                className="location-nav-item"
+                type="button"
+                onClick={() => navigate("/poi-search")}
+              >
+                Nearest POI Search
+              </button>
+
               <button className="location-nav-item active" type="button">
                 Location Sharing
               </button>
@@ -252,9 +261,17 @@ export default function LocationSharingPage() {
               <button
                 className="location-nav-item"
                 type="button"
-                onClick={() => navigate("/poi-search")}
+                onClick={() => navigate("/anomaly-detection")}
               >
-                Nearest POI Search
+                Risk Based Authentication
+              </button>
+
+              <button
+                className="location-nav-item"
+                type="button"
+                onClick={() => navigate("/statistics")}
+              >
+                Statistics &amp; Benchmarks
               </button>
             </nav>
 
@@ -268,174 +285,144 @@ export default function LocationSharingPage() {
           </div>
         </aside>
 
-        <main className="location-main">
-          <div className="location-container">
-            <header className="location-topbar">
-              <p className="location-eyebrow">Encrypted Location Sharing</p>
-              <h1>Manage Shared Location with Company</h1>
+        <main className="poi-main">
+          <div className="poi-container">
+            <header className="poi-topbar">
+              <div>
+                <p className="poi-eyebrow">Encrypted Location Sharing</p>
+                <h1>Manage Shared Location with Company</h1>
+              </div>
             </header>
 
-            <section className="location-content">
-              <form onSubmit={handleSubmit} className="location-form">
-                <div className="location-section">
-                  <h2 className="location-section-title">Company</h2>
-
-                  <div className="location-company-display">
-                    {companyLoading
-                      ? "Loading assigned company..."
-                      : company
-                      ? company.name
-                      : "No company assigned yet"}
-                  </div>
+            <div className="poi-content-grid">
+              <section className="poi-card poi-form-card">
+                <div className="poi-card-header">
+                  <h3>Query Form</h3>
                 </div>
 
-                <div className="location-section location-section-spaced">
-                  <h2 className="location-section-title">Home Address</h2>
+                <form onSubmit={handleSubmit} className="poi-form location-form">
+                  <label className="full-width location-form-row">
+                    <span>Company</span>
+                    <input
+                      type="text"
+                      value={
+                        companyLoading
+                          ? "Loading assigned company..."
+                          : company
+                          ? company.name
+                          : "No company assigned yet"
+                      }
+                      disabled
+                    />
+                  </label>
 
-                  <div className="location-form-grid">
-                    <label>
-                      Home Latitude (°)
+                  <div className="location-form-column">
+                    <label className="location-form-row">
+                      <span>Home Latitude (°)</span>
                       <input
                         type="number"
                         step="any"
                         value={form.homeLatitude}
-                        onChange={(e) =>
-                          handleChange("homeLatitude", e.target.value)
-                        }
+                        onChange={(e) => handleChange("homeLatitude", e.target.value)}
                       />
                     </label>
 
-                    <label>
-                      Home Longitude (°)
+                    <label className="location-form-row">
+                      <span>Home Longitude (°)</span>
                       <input
                         type="number"
                         step="any"
                         value={form.homeLongitude}
-                        onChange={(e) =>
-                          handleChange("homeLongitude", e.target.value)
-                        }
+                        onChange={(e) => handleChange("homeLongitude", e.target.value)}
                       />
                     </label>
 
-                    <label>
-                      Home Radius (m)
+                    <label className="location-form-row">
+                      <span>Home Radius (m)</span>
                       <input
                         type="number"
                         min="1"
                         value={form.homeRadius}
-                        onChange={(e) =>
-                          handleChange("homeRadius", e.target.value)
-                        }
+                        onChange={(e) => handleChange("homeRadius", e.target.value)}
                       />
                     </label>
                   </div>
-                </div>
 
-                <div className="location-section location-section-spaced">
-                  <h2 className="location-section-title">Current Location</h2>
-
-                  <div className="location-form-grid">
-                    <label>
-                      Current Latitude (°)
+                  <div className="location-form-column">
+                    <label className="location-form-row">
+                      <span>Current Latitude (°)</span>
                       <input
                         type="number"
                         step="any"
                         value={form.currentLatitude}
-                        onChange={(e) =>
-                          handleChange("currentLatitude", e.target.value)
-                        }
+                        onChange={(e) => handleChange("currentLatitude", e.target.value)}
                       />
                     </label>
 
-                    <label>
-                      Current Longitude (°)
+                    <label className="location-form-row">
+                      <span>Current Longitude (°)</span>
                       <input
                         type="number"
                         step="any"
                         value={form.currentLongitude}
-                        onChange={(e) =>
-                          handleChange("currentLongitude", e.target.value)
-                        }
+                        onChange={(e) => handleChange("currentLongitude", e.target.value)}
                       />
                     </label>
                   </div>
-                </div>
 
-                <div className="location-actions">
-                  <button
-                    className="location-primary-btn"
-                    type="submit"
-                    disabled={loading || !company}
-                  >
-                    {loading ? "Saving..." : "Share / Update Location"}
-                  </button>
-
-                  {!company && !companyLoading && (
-                    <p className="location-no-company-hint">
-                      You must be assigned to a company before sharing your
-                      location. Ask your company admin to add you.
-                    </p>
-                  )}
-                </div>
-
-                {error && (
-                  <div className="location-alert location-alert-error">
-                    {error}
+                  <div className="full-width poi-form-actions">
+                    <button className="primary-btn" type="submit" disabled={loading || !company}>
+                      {loading ? "Saving..." : "Share / Update Location"}
+                    </button>
                   </div>
-                )}
+                </form>
 
-                {successMessage && (
-                  <div className="location-alert location-alert-success">
-                    {successMessage}
-                  </div>
-                )}
-              </form>
+                {error && <div className="poi-alert poi-alert-error">{error}</div>}
+                {successMessage && <div className="poi-alert">{successMessage}</div>}
+              </section>
 
-              <section className="location-summary">
-                <h2 className="location-section-title">Current State</h2>
-                <p className="location-section-subtitle">
-                  Latest values saved in the trusted client backend.
-                </p>
+              <section className="poi-card poi-results-card">
+                <div className="poi-card-header">
+                  <h3>Current State</h3>
+                </div>
 
                 {!savedData ? (
-                  <p className="location-empty">
-                    No location update submitted yet.
-                  </p>
+                  <p className="poi-empty">No location update submitted yet.</p>
                 ) : (
-                  <div className="location-summary-list">
-                    <div className="location-summary-row">
-                      <span>Company</span>
-                      <strong>{savedData.companyName}</strong>
+                  <div className="poi-simple-metrics">
+                    <div className="poi-simple-metric-card">
+                      <span className="poi-simple-metric-label">Company</span>
+                      <strong className="poi-simple-metric-value">{savedData.companyName}</strong>
                     </div>
 
-                    <div className="location-summary-row">
-                      <span>Home Latitude</span>
-                      <strong>{savedData.homeLatitude}°</strong>
+                    <div className="poi-simple-metric-card">
+                      <span className="poi-simple-metric-label">Home Latitude</span>
+                      <strong className="poi-simple-metric-value">{savedData.homeLatitude}°</strong>
                     </div>
 
-                    <div className="location-summary-row">
-                      <span>Home Longitude</span>
-                      <strong>{savedData.homeLongitude}°</strong>
+                    <div className="poi-simple-metric-card">
+                      <span className="poi-simple-metric-label">Home Longitude</span>
+                      <strong className="poi-simple-metric-value">{savedData.homeLongitude}°</strong>
                     </div>
 
-                    <div className="location-summary-row">
-                      <span>Home Radius</span>
-                      <strong>{savedData.homeRadius} m</strong>
+                    <div className="poi-simple-metric-card">
+                      <span className="poi-simple-metric-label">Home Radius</span>
+                      <strong className="poi-simple-metric-value">{savedData.homeRadius} m</strong>
                     </div>
 
-                    <div className="location-summary-row">
-                      <span>Current Latitude</span>
-                      <strong>{savedData.currentLatitude}°</strong>
+                    <div className="poi-simple-metric-card">
+                      <span className="poi-simple-metric-label">Current Latitude</span>
+                      <strong className="poi-simple-metric-value">{savedData.currentLatitude}°</strong>
                     </div>
 
-                    <div className="location-summary-row">
-                      <span>Current Longitude</span>
-                      <strong>{savedData.currentLongitude}°</strong>
+                    <div className="poi-simple-metric-card">
+                      <span className="poi-simple-metric-label">Current Longitude</span>
+                      <strong className="poi-simple-metric-value">{savedData.currentLongitude}°</strong>
                     </div>
 
-                    <div className="location-summary-row">
-                      <span>Verification</span>
-                      <strong>
+                    <div className="poi-simple-metric-card">
+                      <span className="poi-simple-metric-label">Verification</span>
+                      <strong className="poi-simple-metric-value">
                         {polling
                           ? "Polling for result..."
                           : verificationStatus
@@ -448,13 +435,10 @@ export default function LocationSharingPage() {
 
                 {verificationStatus && !verificationStatus.pending && (
                   <div className="location-verification-result">
-                    <h3 className="location-section-title">
-                      Verification Result
-                    </h3>
-                    <p className="location-section-subtitle">
-                      Computed on encrypted data by the service provider.
-                      Decrypted by both parties.
-                    </p>
+                    <div className="poi-card-header">
+                      <h3>Verification Result</h3>
+                      <p>Computed on encrypted data by the service provider. Decrypted by both parties.</p>
+                    </div>
 
                     <div className="location-result-badges">
                       <span
@@ -478,14 +462,13 @@ export default function LocationSharingPage() {
 
                     {verificationStatus.last_updated && (
                       <p className="location-result-timestamp">
-                        Last checked:{" "}
-                        {new Date(verificationStatus.last_updated).toLocaleString()}
+                        Last checked: {new Date(verificationStatus.last_updated).toLocaleString()}
                       </p>
                     )}
                   </div>
                 )}
               </section>
-            </section>
+            </div>
           </div>
         </main>
       </div>

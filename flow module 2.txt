@@ -1,0 +1,32 @@
+1. client(user)encrypts with its public key his location
+2. client(company) encrypts with its company public key location
+3. server does computation to find if the user is in the country provided by the company, at the office and  at home
+4. server returns the answer to the company and user to be decrypted by each
+
+
+
+
+Bonjour,
+
+Je vous remercie vivement pour votre courriel et pour l’attention portée à ma candidature.
+
+Je serais ravie de participer à l’entretien le vendredi 22 mai à 14h00, heure d’été d’Europe centrale (CEST), si ce créneau est toujours disponible.
+
+Je vous remercie encore pour cette opportunité. Je me réjouis par avance d’échanger avec vous.
+
+Bien cordialement,
+Mariana-Ionela Muntian
+
+
+
+Dear Sir/Madam,
+
+Thank you very much for your email and for considering my application.
+
+I would be pleased to attend the interview on Friday, May 22, at 2:00 PM Central European Summer Time (CEST), if this time slot is still available.
+
+Thank you again for the opportunity. I look forward to speaking with you.
+
+Kind regards,
+Mariana-Ionela Muntian
+

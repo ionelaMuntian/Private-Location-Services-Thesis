@@ -23,22 +23,23 @@
 }
 
 .home-topbar {
-  position: relative;
-  z-index: 2;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 41;
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 48px;
-  height: 64px;
-  background: rgba(246, 243, 239, 0.9);
-  border-bottom: 1px solid rgba(29, 52, 97, 0.12);
-  backdrop-filter: blur(12px);
+  height: 56px;
+  background: transparent;
 }
 
 .home-topbar-title {
   font-size: 0.78rem;
   font-weight: 700;
-  color: #1d3461;
+  color: #ffffff;
   letter-spacing: 0.14em;
   text-transform: uppercase;
 }
@@ -51,7 +52,7 @@
 
 .home-topbar-user {
   font-size: 0.88rem;
-  color: #6d6760;
+  color: rgba(255, 255, 255, 0.75);
   font-weight: 500;
 }
 
@@ -75,9 +76,9 @@
 .home-content {
   position: relative;
   z-index: 1;
-  max-width: 860px;
+  max-width: 1180px;
   margin: 0 auto;
-  padding: 68px 36px 80px;
+  padding: 68px 48px 80px;
 }
 
 .home-heading {
@@ -96,7 +97,7 @@
 
 .services-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
   gap: 16px;
 }
 
@@ -104,10 +105,10 @@
   background: rgba(255, 255, 255, 0.72);
   border: 1px solid rgba(29, 52, 97, 0.14);
   border-radius: 22px;
-  padding: 28px 26px 24px;
+  padding: 22px 22px 20px;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 14px;
   backdrop-filter: blur(10px);
   box-shadow:
     0 8px 24px rgba(29, 52, 97, 0.05),
@@ -125,12 +126,20 @@
 
 .service-card h3 {
   margin: 0;
-  flex-grow: 1;
   font-family: "Inter", sans-serif;
   font-size: 1.05rem;
   font-weight: 600;
   color: #2f2a25;
   line-height: 1.3;
+}
+
+.service-card-icon {
+  flex-grow: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #1d3461;
+  padding: 6px 0;
 }
 
 .service-card button {

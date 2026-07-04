@@ -40,15 +40,15 @@ function SimpleMetrics({ metrics, scheme }) {
         <strong className="poi-simple-metric-value">{scheme}</strong>
       </div>
       <div className="poi-simple-metric-card">
-        <span className="poi-simple-metric-label">Total client time</span>
+        <span className="poi-simple-metric-label">Client time</span>
         <strong className="poi-simple-metric-value">{formatMs(clientTotal)}</strong>
       </div>
       <div className="poi-simple-metric-card">
-        <span className="poi-simple-metric-label">Total server time</span>
+        <span className="poi-simple-metric-label">Server time</span>
         <strong className="poi-simple-metric-value">{formatMs(serverTotal)}</strong>
       </div>
       <div className="poi-simple-metric-card">
-        <span className="poi-simple-metric-label">Client + server</span>
+        <span className="poi-simple-metric-label">Total</span>
         <strong className="poi-simple-metric-value">{formatMs(combinedTotal)}</strong>
       </div>
     </div>
@@ -88,6 +88,108 @@ function ResultsTable({ results }) {
   );
 }
 
+function PoiMap({ query, results, plaintextResults, scheme }) {
+  if (!query || !results || results.length === 0) return null;
+
+  const showPlaintext = scheme !== "plaintext" && plaintextResults && plaintextResults.length > 0;
+
+  const allPoints = [
+    { lat: query.latitude, lon: query.longitude },
+    ...results.map((r) => ({ lat: r.latitude, lon: r.longitude })),
+    ...(showPlaintext ? plaintextResults.map((r) => ({ lat: r.latitude, lon: r.longitude })) : []),
+  ];
+
+  const width = 420;
+  const height = 260;
+  const pad = 28;
+
+  const lats = allPoints.map((p) => p.lat);
+  const lons = allPoints.map((p) => p.lon);
+  const latSpan = Math.max(...lats) - Math.min(...lats) || 0.001;
+  const lonSpan = Math.max(...lons) - Math.min(...lons) || 0.001;
+  const minLat = Math.min(...lats);
+  const minLon = Math.min(...lons);
+
+  const project = (lat, lon) => ({
+    x: pad + ((lon - minLon) / lonSpan) * (width - pad * 2),
+    y: height - pad - ((lat - minLat) / latSpan) * (height - pad * 2),
+  });
+
+  const queryXY = project(query.latitude, query.longitude);
+
+  return (
+    <div className="poi-map-wrap">
+      <svg viewBox={`0 0 ${width} ${height}`} className="poi-map-svg">
+        {results.map((r, i) => {
+          const p = project(r.latitude, r.longitude);
+          return (
+            <line
+              key={`line-r-${i}`}
+              x1={queryXY.x}
+              y1={queryXY.y}
+              x2={p.x}
+              y2={p.y}
+              stroke="#1d3461"
+              strokeWidth="1.4"
+              strokeDasharray="4 4"
+              opacity="0.55"
+            />
+          );
+        })}
+
+        {showPlaintext &&
+          plaintextResults.map((r, i) => {
+            const p = project(r.latitude, r.longitude);
+            return (
+              <line
+                key={`line-p-${i}`}
+                x1={queryXY.x}
+                y1={queryXY.y}
+                x2={p.x}
+                y2={p.y}
+                stroke="#b23b3b"
+                strokeWidth="1.2"
+                strokeDasharray="2 3"
+                opacity="0.5"
+              />
+            );
+          })}
+
+        {results.map((r, i) => {
+          const p = project(r.latitude, r.longitude);
+          return (
+            <circle key={`pt-r-${i}`} cx={p.x} cy={p.y} r="6" fill="#3f5a8a" stroke="#fff" strokeWidth="1.5" />
+          );
+        })}
+
+        {showPlaintext &&
+          plaintextResults.map((r, i) => {
+            const p = project(r.latitude, r.longitude);
+            return (
+              <circle key={`pt-p-${i}`} cx={p.x} cy={p.y} r="7" fill="none" stroke="#b23b3b" strokeWidth="2" />
+            );
+          })}
+
+        <circle cx={queryXY.x} cy={queryXY.y} r="7" fill="#1d3461" stroke="#fff" strokeWidth="2" />
+      </svg>
+
+      <div className="poi-map-legend">
+        <span>
+          <i className="poi-map-swatch poi-map-swatch-current" /> Current point
+        </span>
+        <span>
+          <i className="poi-map-swatch poi-map-swatch-returned" /> Returned position ({scheme})
+        </span>
+        {showPlaintext && (
+          <span>
+            <i className="poi-map-swatch poi-map-swatch-plaintext" /> Plaintext reference position
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function AllRunsComparison({ runs }) {
   if (!runs || runs.length === 0) {
     return <p className="poi-empty">No comparison data available.</p>;
@@ -100,9 +202,9 @@ function AllRunsComparison({ runs }) {
           <thead>
             <tr>
               <th>Scheme</th>
-              <th>Total client time</th>
-              <th>Total server time</th>
-              <th>Client + server</th>
+              <th>Client time</th>
+              <th>Server time</th>
+              <th>Total</th>
             </tr>
           </thead>
           <tbody>
@@ -139,6 +241,8 @@ export default function PoiSearchPage() {
   const [results, setResults] = useState([]);
   const [responseMetrics, setResponseMetrics] = useState(null);
   const [selectedScheme, setSelectedScheme] = useState(null);
+  const [queryPoint, setQueryPoint] = useState(null);
+  const [plaintextResults, setPlaintextResults] = useState([]);
   const [allRuns, setAllRuns] = useState([]);
   const [mode, setMode] = useState("single");
   const [loading, setLoading] = useState(false);
@@ -160,6 +264,8 @@ export default function PoiSearchPage() {
     setResults([]);
     setResponseMetrics(null);
     setSelectedScheme(null);
+    setQueryPoint(null);
+    setPlaintextResults([]);
     setAllRuns([]);
     setMode("single");
   };
@@ -205,6 +311,20 @@ export default function PoiSearchPage() {
         setSelectedScheme(data.scheme);
         setResponseMetrics(data.metrics || null);
         setResults(data.results || []);
+        setQueryPoint({ latitude: payload.latitude, longitude: payload.longitude });
+
+        if (data.scheme !== "plaintext") {
+          try {
+            const plaintextResponse = await axios.post(
+              API_URL,
+              { ...payload, scheme: "plaintext" },
+              { headers: { Authorization: `Bearer ${token}` }, timeout: REQUEST_TIMEOUT_MS }
+            );
+            setPlaintextResults(plaintextResponse.data.results || []);
+          } catch {
+            setPlaintextResults([]);
+          }
+        }
       }
     } catch (err) {
       if (err?.response?.status === 401 || err?.response?.status === 403) {
@@ -242,7 +362,7 @@ export default function PoiSearchPage() {
                 Location Sharing
               </button>
               <button className="poi-nav-item" type="button" onClick={() => navigate("/anomaly-detection")}>
-                Impossible Travel Detection
+                Risk Based Authentication
               </button>
               <button className="poi-nav-item" type="button" onClick={() => navigate("/statistics")}>
                 Statistics &amp; Benchmarks
@@ -313,11 +433,10 @@ export default function PoiSearchPage() {
                     />
                   </label>
 
-                  <label className="full-width">
+                  <label>
                     Scheme
                     <select value={form.scheme} onChange={(e) => handleChange("scheme", e.target.value)}>
                       <option value="plaintext">plaintext</option>
-                      <option value="ckks">ckks</option>
                       <option value="concrete">concrete</option>
                       <option value="openfhe_ss">openfhe_ss (scheme switching)</option>
                       <option value="all">all</option>
@@ -359,6 +478,12 @@ export default function PoiSearchPage() {
                       <SimpleMetrics metrics={responseMetrics} scheme={selectedScheme} />
                     )}
                     <ResultsTable results={results} />
+                    <PoiMap
+                      query={queryPoint}
+                      results={results}
+                      plaintextResults={plaintextResults}
+                      scheme={selectedScheme}
+                    />
                   </>
                 )}
 

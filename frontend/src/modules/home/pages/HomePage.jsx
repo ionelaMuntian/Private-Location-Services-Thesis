@@ -32,15 +32,15 @@ export default function HomePage() {
 
       <div className="home-content">
         <h1 className="home-heading">
-          Welcome{username ? `, ${username}` : ""} to<br />
+          Welcome to<br />
           <span>Location Services</span>
         </h1>
 
         <div className="services-grid">
-          <ServiceCard title="Nearest Points of Interest" route="/poi-search" />
-          <ServiceCard title="Location Sharing" route="/location-sharing" />
-          <ServiceCard title="Impossible Travel Detection" route="/anomaly-detection" />
-          <ServiceCard title="Statistics & Benchmarks" route="/statistics" />
+          <ServiceCard title="Nearest Points of Interest" route="/poi-search" icon="poi" />
+          <ServiceCard title="Location Sharing" route="/location-sharing" icon="sharing" />
+          <ServiceCard title="Risk Based Authentication" route="/anomaly-detection" icon="anomaly" />
+          <ServiceCard title="Statistics & Benchmarks" route="/statistics" icon="stats" />
         </div>
       </div>
     </div>
