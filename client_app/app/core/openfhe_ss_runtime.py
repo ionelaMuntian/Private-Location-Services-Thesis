@@ -17,8 +17,13 @@ from openfhe import (
 FLEXIBLEAUTO = getattr(openfhe, "FLEXIBLEAUTO", openfhe.ScalingTechnique.FLEXIBLEAUTO)
 HYBRID = getattr(openfhe, "HYBRID", openfhe.KeySwitchTechnique.HYBRID)
 
-N_SS = 128
 _SS_DEPTH = 52
+
+
+def next_power_of_2(n: int) -> int:
+    if n <= 1:
+        return 1
+    return 1 << (n - 1).bit_length()
 
 
 def _b64encode(data: bytes) -> str:
@@ -61,8 +66,10 @@ def _get_std128_param():
 
 
 class OpenFHESSClientRuntime:
-    def __init__(self) -> None:
-        self.n = N_SS
+    def __init__(self, n: int) -> None:
+        if n != next_power_of_2(n):
+            raise ValueError(f"OpenFHE SS: batch size n={n} must be a power of 2.")
+        self.n = n
         self.cc, self.keys = self._setup()
 
     def _setup(self):

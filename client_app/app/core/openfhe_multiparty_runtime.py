@@ -143,8 +143,17 @@ class OpenFHEMultipartyRuntime:
             raise RuntimeError("Failed to load OpenFHE crypto context from disk")
         self.cc = cc
 
-        if not self.cc.DeserializeEvalMultKey(str(_EVAL_MULT_FILE), BINARY):
-            raise RuntimeError("Failed to load OpenFHE eval mult keys from disk")
+        try:
+            if not self.cc.DeserializeEvalMultKey(str(_EVAL_MULT_FILE), BINARY):
+                raise RuntimeError("Failed to load OpenFHE eval mult keys from disk")
+        except RuntimeError as exc:
+            # The global eval-mult-key store is keyed by keyTag, not by cc
+            # instance. On repeated loads (this runs on every refresh_context()
+            # call, not just at process startup) the joint-key tag is already
+            # present from a previous load with the same persisted keys, so
+            # the existing entry is safe to reuse.
+            if "there is a key vector for the given keyTag" not in str(exc):
+                raise
 
         joint_pk, ok = DeserializePublicKey(str(_COMPANY_PK_FILE), BINARY)
         if not ok:
@@ -164,6 +173,15 @@ class OpenFHEMultipartyRuntime:
         print("[OpenFHE] Keys loaded successfully", flush=True)
 
     # Crypto operations
+    def refresh_context(self) -> None:
+        # OpenFHE dedupes deserialized contexts through a process-wide registry.
+        # Other runtimes in this process (the SS benchmark cache) call
+        # ReleaseAllContexts() to free memory, which orphans self.cc from that
+        # registry even though this Python reference stays alive. Reloading
+        # from disk re-registers a context before we deserialize any
+        # ciphertext produced elsewhere, so it resolves to the same object.
+        self._load_from_disk()
+
     def serialize_crypto_context(self) -> str:
         return _serialize_to_b64(self.cc)
 

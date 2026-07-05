@@ -301,8 +301,6 @@ async def execute_performance_simulation() -> dict:
             finally:
                 gc.collect()
 
-    _clear_openfhe_ss_singleton()
-
     print("\n[PerfSim] Aggregating results...", flush=True)
 
     summary = _build_summary(records)
@@ -322,18 +320,6 @@ async def execute_performance_simulation() -> dict:
 
     print("[PerfSim] Done.", flush=True)
     return session
-
-
-def _clear_openfhe_ss_singleton() -> None:
-    try:
-        import client_app.app.core.openfhe_ss_runtime_instance as _mod
-        if _mod._instance is not None:
-            print("[PerfSim] Releasing OpenFHE SS singleton...", flush=True)
-            _mod._instance = None
-            gc.collect()
-            print("[PerfSim] OpenFHE SS singleton released.", flush=True)
-    except Exception as exc:
-        print(f"[PerfSim] Warning: could not clear OpenFHE SS singleton: {exc}", flush=True)
 
 async def get_simulation_history() -> dict:
     return {"sessions": _load_history()}

@@ -19,8 +19,8 @@ def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return round(R * 2.0 * math.asin(math.sqrt(a)), 4)
 
 class OpenFHESSClientAdapter(ClientCryptoAdapter):
-    def prepare_query(self, latitude: float, longitude: float, k: int) -> dict:
-        rt = get_openfhe_ss_runtime()
+    def prepare_query(self, latitude: float, longitude: float, k: int, n: int) -> dict:
+        rt = get_openfhe_ss_runtime(n)
 
         return {
             "plaintext_query": None,
@@ -40,6 +40,7 @@ class OpenFHESSClientAdapter(ClientCryptoAdapter):
                 "latitude_m": latitude,
                 "longitude_m": longitude,
                 "requested_k": k,
+                "n_candidates": n,
             },
         }
 
@@ -47,7 +48,7 @@ class OpenFHESSClientAdapter(ClientCryptoAdapter):
         if local_state is None:
             raise ValueError("OpenFHE SS: missing local_state.")
 
-        rt = get_openfhe_ss_runtime()
+        rt = get_openfhe_ss_runtime(local_state["n_candidates"])
         dist_ct_b64: str = response_data["dist_ct_b64"]
         candidates: list[dict] = response_data["candidates"]
         actual_n = len(candidates)

@@ -332,9 +332,6 @@ export default function AdminDashboardPage() {
                   <div>
                     <p className="poi-eyebrow">Company Admin</p>
                     <h1>Create Company Policy</h1>
-                    <p className="poi-subtitle">
-                      Define a new company with encrypted office location and country bounds.
-                    </p>
                   </div>
                 </header>
 
@@ -342,7 +339,6 @@ export default function AdminDashboardPage() {
                   <section className="poi-card">
                     <div className="poi-card-header">
                       <h3>New Company</h3>
-                      <p>Office and country coordinates are entered in decimal degrees (WGS84).</p>
                     </div>
                     <form className="poi-form" onSubmit={handleCreateCompany}>
                       <CompanyFormFields form={createForm} onChange={(f, v) => setCreateForm((p) => ({ ...p, [f]: v }))} />
@@ -366,9 +362,6 @@ export default function AdminDashboardPage() {
                   <div>
                     <p className="poi-eyebrow">Company Admin</p>
                     <h1>Update Company</h1>
-                    <p className="poi-subtitle">
-                      Edit office location, country bounds, or delete the company.
-                    </p>
                   </div>
                 </header>
 
@@ -384,7 +377,7 @@ export default function AdminDashboardPage() {
                           value={updateCompanyId}
                           onChange={(e) => handleSelectUpdateCompany(e.target.value)}
                         >
-                          <option value="">— select a company —</option>
+                          <option value="">Select a company</option>
                           {companies.map((c) => (
                             <option key={c.id} value={c.id}>{c.name}</option>
                           ))}
@@ -422,10 +415,6 @@ export default function AdminDashboardPage() {
                     </section>
                   )}
 
-                  {!updateCompanyId && companies.length === 0 && (
-                    <p className="poi-empty">No companies yet. Create one on the Company Policy page.</p>
-                  )}
-
                   <FeedbackSection message={message} error={error} />
                 </div>
               </>
@@ -438,9 +427,6 @@ export default function AdminDashboardPage() {
                   <div>
                     <p className="poi-eyebrow">Company Admin</p>
                     <h1>Manage Employees</h1>
-                    <p className="poi-subtitle">
-                      Assign employees to a company and run encrypted compliance checks.
-                    </p>
                   </div>
                 </header>
 
@@ -457,7 +443,7 @@ export default function AdminDashboardPage() {
                           value={manageCompanyId}
                           onChange={(e) => handleSelectManageCompany(e.target.value)}
                         >
-                          <option value="">— select a company —</option>
+                          <option value="">Select a company</option>
                           {companies.map((c) => (
                             <option key={c.id} value={c.id}>{c.name}</option>
                           ))}

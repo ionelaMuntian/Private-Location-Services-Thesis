@@ -21,6 +21,7 @@ from fastapi import HTTPException
 
 from ....core.concrete_client_runtime import SUPPORTED_N as _CONCRETE_SUPPORTED_N
 from ....core.metrics import StepTimer
+from ....core.openfhe_ss_runtime import next_power_of_2 as _next_power_of_2
 from ....infrastructure.grpc_client import (
     get_from_service_provider,
     post_to_service_provider,
@@ -115,18 +116,20 @@ async def _execute_single_scheme(request: NearestKClientRequest) -> dict:
                 detail=f"No POIs found for category '{request.category}'.",
             )
 
+        n_candidates = _next_power_of_2(actual_count)
+
         prepare_timer = StepTimer()
         prepared = adapter.prepare_query(
             latitude=lat_m,
             longitude=lon_m,
             k=request.k,
+            n=n_candidates,
         )
-        n_candidates = prepared["encrypted_query"]["metadata"]["n_candidates"]  # N_SS=128
         prepare_query_ms = prepare_timer.elapsed_ms()
         metadata = prepared["encrypted_query"]["metadata"]
 
         from ....core.openfhe_ss_runtime_instance import get_openfhe_ss_runtime
-        rt = get_openfhe_ss_runtime()
+        rt = get_openfhe_ss_runtime(n_candidates)
 
         key_files = {
             "crypto_context": rt.serialize_crypto_context_to_file(),

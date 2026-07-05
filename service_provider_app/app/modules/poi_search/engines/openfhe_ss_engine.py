@@ -1,14 +1,10 @@
 import base64
+import gc
 import tempfile
 from pathlib import Path
 from time import time
 from typing import Any
 from uuid import uuid4
-
-def _next_power_of_2(n: int) -> int:
-    if n <= 1:
-        return 1
-    return 1 << (n - 1).bit_length()
 
 from fastapi import HTTPException
 
@@ -17,6 +13,7 @@ from openfhe import (
     BINARY,
     DeserializeCiphertext,
     DeserializeCryptoContext,
+    ReleaseAllContexts,
     SerializeToFile,
 )
 
@@ -36,10 +33,6 @@ _CC_CACHE: dict[str, Any] = {}
 repository = PoiRepository()
 
 _DIST_SCALE = 5e-9
-
-_BATCH_SIZE = 128
-
-_N_SLOTS = 128
 _N_VALUES = 128
 
 
@@ -95,6 +88,9 @@ def execute_openfhe_ss_upload_keys(
 
     key_id = str(uuid4())
     print(f"[OpenFHE SS] Key upload: key_id={key_id[:8]}...", flush=True)
+
+    ReleaseAllContexts()
+    _CC_CACHE.clear()
 
     cc = _load_crypto_context(crypto_context_b64)
     _load_eval_mult_keys(cc, eval_mult_keys_b64)
@@ -240,11 +236,11 @@ def execute_openfhe_ss_evaluate(
     py_vals = [float(c["lat_m"]) for c in candidates]
     px_vals = [float(c["lon_m"]) for c in candidates]
 
-    while len(py_vals) < _BATCH_SIZE:
+    while len(py_vals) < n:
         py_vals.append(0.0)
         px_vals.append(0.0)
-    py_vals = py_vals[:_BATCH_SIZE]
-    px_vals = px_vals[:_BATCH_SIZE]
+    py_vals = py_vals[:n]
+    px_vals = px_vals[:n]
 
     candidate_ms = candidate_timer.elapsed_ms()
 
@@ -258,7 +254,7 @@ def execute_openfhe_ss_evaluate(
     compute_timer = StepTimer()
     print(
         f"[OpenFHE SS] Computing distances: {actual_n} real candidates, "
-        f"batch_size={_BATCH_SIZE}...",
+        f"batch_size={n}...",
         flush=True,
     )
 
@@ -273,17 +269,17 @@ def execute_openfhe_ss_evaluate(
 
     dist2_ct = cc.EvalAdd(dy2, dx2)
 
-    if actual_n < _BATCH_SIZE:
+    if actual_n < n:
         combined_scale = cc.MakeCKKSPackedPlaintext(
-            [_DIST_SCALE] * actual_n + [0.0] * (_BATCH_SIZE - actual_n)
+            [_DIST_SCALE] * actual_n + [0.0] * (n - actual_n)
         )
         dist2_scaled = cc.EvalMult(dist2_ct, combined_scale)
         pad_plain = cc.MakeCKKSPackedPlaintext(
-            [0.0] * actual_n + [0.9] * (_BATCH_SIZE - actual_n)
+            [0.0] * actual_n + [0.9] * (n - actual_n)
         )
         dist2_scaled = cc.EvalAdd(dist2_scaled, pad_plain)
     else:
-        scale_plain = cc.MakeCKKSPackedPlaintext([_DIST_SCALE] * _BATCH_SIZE)
+        scale_plain = cc.MakeCKKSPackedPlaintext([_DIST_SCALE] * n)
         dist2_scaled = cc.EvalMult(dist2_ct, scale_plain)
 
     compute_ms = compute_timer.elapsed_ms()
@@ -291,6 +287,10 @@ def execute_openfhe_ss_evaluate(
 
     dist_ct_b64 = _serialize_to_b64(dist2_scaled)
     total_ms = total_timer.elapsed_ms()
+
+    _KEY_STORE.pop(key_id, None)
+    _CC_CACHE.pop(key_id, None)
+    gc.collect()
 
     return {
         "scheme": "openfhe_ss",

@@ -399,6 +399,8 @@ class CompanyService:
 
         job_id = int(job["id"])
 
+        openfhe_multiparty_runtime.refresh_context()
+
         up = openfhe_multiparty_runtime.user_partial_decrypt_scalar
         cp = openfhe_multiparty_runtime.company_partial_decrypt_scalar
         fuse = openfhe_multiparty_runtime.company_fuse_scalar

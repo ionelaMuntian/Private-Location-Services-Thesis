@@ -85,7 +85,7 @@ services:
     ports:
       - "8888:8888"
     volumes:
-      - ./database/anomaly-detection-dataset:/dataset:ro
+      - ./datasets:/dataset:ro
       - ./notebooks:/notebooks
       - ./service_provider_app/app/modules/anomaly_detection/models:/models
     profiles:

@@ -1,9 +1,11 @@
+import gc
 import json
 import math
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+from ....core.openfhe_ss_runtime import next_power_of_2 as _next_power_of_2
 from ..schemas import NearestKClientRequest
 from .nearest_k import execute_nearest_k
 
@@ -80,6 +82,30 @@ def _build_run_entry(scheme: str, n_candidates: int | None, result: dict) -> dic
             "key_bytes": sizes.get("key_bytes", 0),
         },
     }
+
+
+def _apply_openfhe_batch_fairness(run_entry: dict, batch_reference_encrypt_ms: dict) -> None:
+    if run_entry.get("scheme") != "openfhe_ss" or run_entry.get("error"):
+        return
+
+    n_candidates = run_entry.get("n_candidates")
+    if not n_candidates:
+        return
+
+    batch_size = _next_power_of_2(n_candidates)
+    encrypt_ms = run_entry["timing"].get("encrypt_ms")
+    reference_ms = batch_reference_encrypt_ms.get(batch_size)
+
+    if reference_ms is None:
+        if encrypt_ms is not None:
+            batch_reference_encrypt_ms[batch_size] = encrypt_ms
+        return
+
+    if encrypt_ms is not None:
+        run_entry["timing"]["encrypt_ms"] = round(encrypt_ms + reference_ms, 3)
+    total_ms = run_entry["timing"].get("client_total_ms")
+    if total_ms is not None:
+        run_entry["timing"]["client_total_ms"] = round(total_ms + reference_ms, 3)
 
 
 def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -163,6 +189,7 @@ async def execute_benchmark(
     openfhe_n_values: list[int] | None = None,
 ) -> dict:
     runs = []
+    openfhe_batch_reference_encrypt_ms: dict[int, float] = {}
 
     for scheme in schemes:
         if scheme not in SUPPORTED_STANDARD_SCHEMES:
@@ -177,7 +204,9 @@ async def execute_benchmark(
                 scheme=scheme,
             )
             result = await execute_nearest_k(request)
-            runs.append(_build_run_entry(scheme, None, result))
+            run_entry = _build_run_entry(scheme, None, result)
+            _apply_openfhe_batch_fairness(run_entry, openfhe_batch_reference_encrypt_ms)
+            runs.append(run_entry)
         except Exception as exc:
             runs.append({
                 "label": scheme,
@@ -187,6 +216,8 @@ async def execute_benchmark(
                 "timing": {},
                 "sizes": {},
             })
+        finally:
+            gc.collect()
 
     _CONCRETE_MAX_RETRIES = 3
     for n in concrete_n_values:
@@ -212,6 +243,8 @@ async def execute_benchmark(
                 last_exc = exc
                 if "PBS noise" not in str(exc):
                     break
+            finally:
+                gc.collect()
         if last_exc is not None:
             runs.append({
                 "label": f"concrete (N={n})",
@@ -235,7 +268,9 @@ async def execute_benchmark(
                 scheme="openfhe_ss",
             )
             result = await execute_nearest_k(request)
-            runs.append(_build_run_entry("openfhe_ss", n, result))
+            run_entry = _build_run_entry("openfhe_ss", n, result)
+            _apply_openfhe_batch_fairness(run_entry, openfhe_batch_reference_encrypt_ms)
+            runs.append(run_entry)
         except Exception as exc:
             runs.append({
                 "label": f"openfhe_ss (N={n})",
@@ -245,6 +280,8 @@ async def execute_benchmark(
                 "timing": {},
                 "sizes": {},
             })
+        finally:
+            gc.collect()
 
     _all_n_benchmarked: set[int] = set()
     for n in concrete_n_values:
@@ -276,6 +313,8 @@ async def execute_benchmark(
                 "timing": {},
                 "sizes": {},
             })
+        finally:
+            gc.collect()
 
     _attach_accuracy(runs)
 

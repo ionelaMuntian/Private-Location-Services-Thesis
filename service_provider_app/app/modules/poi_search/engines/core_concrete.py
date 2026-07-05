@@ -1,3 +1,4 @@
+import gc
 from time import time
 from uuid import uuid4
 
@@ -165,6 +166,11 @@ def execute_concrete_evaluation(request: ConcreteEvaluationRequest) -> dict:
     )
     evaluation_ms = evaluation_timer.elapsed_ms()
     total_ms = total_timer.elapsed_ms()
+
+    if request.key_id:
+        _CONCRETE_KEY_STORE.pop(request.key_id, None)
+    evaluation_keys_bytes = None
+    gc.collect()
 
     return {
         "scheme": "concrete",
