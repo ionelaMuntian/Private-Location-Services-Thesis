@@ -6,7 +6,6 @@ from concrete import fhe
 
 SUPPORTED_N = [1, 5, 12, 13, 14, 15]
 
-
 def _b64decode(data: str) -> bytes:
     return base64.b64decode(data.encode("utf-8"))
 
@@ -47,32 +46,21 @@ class ConcreteServerRuntime:
             except FileNotFoundError:
                 pass
 
-    def run_find_minimum(
-        self,
-        n: int,
-        evaluation_keys_bytes: bytes,
-        encrypted_user_coords_b64: str,
-        items: list,
-    ) -> dict:
+    def run_find_minimum(self, n: int, evaluation_keys_bytes: bytes, encrypted_user_coords_b64: str, items: list,) -> dict:
         if n not in self._servers:
             raise ValueError(
-                f"Concrete server circuit for N={n} is not loaded. "
-                f"Available: {list(self._servers.keys())}. "
-                "Recompile the circuits."
+                f"The concrete server circuit for N={n} is not loaded"
             )
 
         if len(items) != n:
             raise ValueError(
                 f"Concrete circuit for N={n} expects exactly {n} items, "
-                f"got {len(items)}."
             )
 
         server = self._servers[n]
         evaluation_keys = fhe.EvaluationKeys.deserialize(evaluation_keys_bytes)
 
-        user_payload = json.loads(
-            _b64decode(encrypted_user_coords_b64).decode("utf-8")
-        )
+        user_payload = json.loads( _b64decode(encrypted_user_coords_b64).decode("utf-8") )
         encrypted_qx = fhe.Value.deserialize(_b64decode(user_payload["enc_qx"]))
         encrypted_qy = fhe.Value.deserialize(_b64decode(user_payload["enc_qy"]))
 

@@ -25,7 +25,6 @@ def next_power_of_2(n: int) -> int:
         return 1
     return 1 << (n - 1).bit_length()
 
-
 def _b64encode(data: bytes) -> str:
     return base64.b64encode(data).decode("utf-8")
 
@@ -68,7 +67,7 @@ def _get_std128_param():
 class OpenFHESSClientRuntime:
     def __init__(self, n: int) -> None:
         if n != next_power_of_2(n):
-            raise ValueError(f"OpenFHE SS: batch size n={n} must be a power of 2.")
+            raise ValueError(f"OpenFHE SS: batch size n={n} must be a power of 2")
         self.n = n
         self.cc, self.keys = self._setup()
 
@@ -114,21 +113,20 @@ class OpenFHESSClientRuntime:
         ss_params.SetComputeArgmin(True)
         ss_params.SetOneHotEncoding(True)
         lwe_sk = cc.EvalSchemeSwitchingSetup(ss_params)
-        print("[OpenFHE SS] EvalSchemeSwitchingSetup done", flush=True)
+        print("EvalSchemeSwitchingSetup done", flush=True)
 
         bfhcc = cc.GetBinCCForSchemeSwitch()
         bfhcc.BTKeyGen(lwe_sk)
-        print("[OpenFHE SS] BTKeyGen done", flush=True)
+        print("BTKeyGen done", flush=True)
 
         cc.EvalSchemeSwitchingKeyGen(keys, lwe_sk)
-        print("[OpenFHE SS] EvalSchemeSwitchingKeyGen done", flush=True)
+        print("EvalSchemeSwitchingKeyGen done", flush=True)
 
         cc.EvalCKKStoFHEWPrecompute()
-        print("[OpenFHE SS] EvalCKKStoFHEWPrecompute done", flush=True)
+        print("EvalCKKStoFHEWPrecompute done", flush=True)
 
         return cc, keys
 
-    # File-based serialization - uploaded to server (single round)
     def serialize_crypto_context_to_file(self) -> str:
         with tempfile.NamedTemporaryFile(delete=False) as tmp:
             path = tmp.name
@@ -176,7 +174,6 @@ class OpenFHESSClientRuntime:
         )
         result = self.cc.EvalMinSchemeSwitching(ct, self.keys.publicKey, self.n, self.n)
 
-        # Python binding returns (min_ct, argmin_ct) - both CKKS ciphertexts
         if isinstance(result, (list, tuple)) and len(result) >= 2:
             argmin_ct = result[1]
         else:

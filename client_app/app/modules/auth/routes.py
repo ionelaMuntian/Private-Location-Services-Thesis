@@ -1,3 +1,5 @@
+# Purpose: it defines the endpoints and dispatches the received tasks to the corresponding services
+
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from .dependencies import get_current_user

@@ -31,8 +31,8 @@ class ConcreteClientAdapter(ClientCryptoAdapter):
             raise HTTPException(
                 status_code=422,
                 detail=(
-                    f"Concrete circuit is compiled for N ∈ {SUPPORTED_N}. "
-                    f"Requested N={n} is not supported."
+                    f"Concrete circuit is compiled for N ∈ {SUPPORTED_N}"
+                    f"Requested N={n} is not supported"
                 ),
             )
 
@@ -79,7 +79,7 @@ class ConcreteClientAdapter(ClientCryptoAdapter):
         actual_n = len(candidates)
 
         if actual_n == 0:
-            raise ValueError("Concrete: no candidates returned for the category.")
+            raise ValueError("Concrete: no candidates returned for the category")
 
         padded = list(candidates)
         for i in range(n - actual_n):
@@ -128,14 +128,14 @@ class ConcreteClientAdapter(ClientCryptoAdapter):
         local_state: dict | None = None,
     ) -> list[dict]:
         if local_state is None or "runtime" not in local_state:
-            raise ValueError("Missing Concrete runtime in local_state.")
+            raise ValueError("Missing Concrete runtime in local_state")
 
         runtime: ConcreteClientRuntime = local_state["runtime"]
         candidate_by_internal_id = local_state.get("candidate_by_internal_id", {})
 
         encrypted_best = response_data.get("encrypted_best_result")
         if encrypted_best is None:
-            raise ValueError("Missing encrypted_best_result in Concrete response.")
+            raise ValueError("Missing encrypted_best_result in Concrete response")
 
         best = runtime.decrypt_top1(encrypted_best)
 
@@ -146,8 +146,8 @@ class ConcreteClientAdapter(ClientCryptoAdapter):
         candidate = candidate_by_internal_id.get(internal_id)
         if candidate is None:
             raise ValueError(
-                f"Concrete PBS noise error: decrypted id={internal_id} is outside "
-                f"valid range [1..{n}]. Recompile with a lower p_error."
+                f"Concrete PBS noise error: decrypted id={internal_id} is outside"
+                f"valid range [1..{n}]. Recompile with a lower p_error"
             )
 
         distance_km = dequantize_squared_distance_to_km(dist2_quantized, quant_config)

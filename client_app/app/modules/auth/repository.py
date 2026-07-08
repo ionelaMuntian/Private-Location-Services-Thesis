@@ -1,8 +1,9 @@
+# Purpose: manages the users tables, as a communication layer between the business logic and the database
+
 from psycopg.rows import dict_row
 
 from ...core.config import settings
 from ...infrastructure.auth_db import get_auth_connection
-
 
 class AuthRepository:
     def __init__(self) -> None:

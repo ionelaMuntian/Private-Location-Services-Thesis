@@ -13,7 +13,7 @@ class ClientCryptoAdapter(ABC):
         local_state: dict,
     ) -> list[dict]:
         raise NotImplementedError(
-            "This adapter does not support candidate-side public arg building."
+            "This adapter does not support candidate-side public arg building"
         )
 
     @abstractmethod

@@ -1,3 +1,5 @@
+# Purpose: defines all functions need for administrating passwords: hashing, verifying, creating acces tokens
+
 from datetime import datetime, timedelta, timezone
 
 import jwt
@@ -7,10 +9,8 @@ from pwdlib import PasswordHash
 
 from ...core.config import settings
 
-
 password_hasher = PasswordHash.recommended()
 bearer_scheme = HTTPBearer(auto_error=False)
-
 
 def hash_password(password: str) -> str:
     return password_hasher.hash(password)
@@ -38,7 +38,6 @@ def create_access_token(user_id: int, username: str) -> str:
         algorithm=settings.jwt_algorithm,
     )
 
-
 def decode_access_token(token: str) -> dict:
     try:
         payload = jwt.decode(
@@ -50,22 +49,19 @@ def decode_access_token(token: str) -> dict:
     except jwt.ExpiredSignatureError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Access token expired.",
+            detail="Access token expired",
         ) from exc
     except jwt.InvalidTokenError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid access token.",
+            detail="Invalid access token",
         ) from exc
 
-
-def get_current_token_payload(
-    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
-) -> dict:
+def get_current_token_payload( credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),) -> dict:
     if credentials is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication required.",
+            detail="Authentication required",
         )
 
     return decode_access_token(credentials.credentials)

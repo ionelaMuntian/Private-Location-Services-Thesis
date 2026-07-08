@@ -27,8 +27,8 @@ class ConcreteClientRuntime:
     def __init__(self, n: int) -> None:
         if n not in SUPPORTED_N:
             raise ValueError(
-                f"Unsupported N={n}. Supported values: {SUPPORTED_N}. "
-                "Recompile the circuits if you need a different N."
+                f"Unsupported N={n}. Supported values: {SUPPORTED_N}"
+                "Recompile the circuits if you need a different N"
             )
 
         self.n = n
@@ -36,8 +36,8 @@ class ConcreteClientRuntime:
 
         if not path.exists():
             raise FileNotFoundError(
-                f"Concrete client specs not found at {path}. "
-                f"Run client_app/tools/compile_distance_circuit.py first."
+                f"Concrete client specs are not found at {path}"
+                f"Run client_app/tools/compile_distance_circuit.py first"
             )
 
         specs_bytes = path.read_bytes()
