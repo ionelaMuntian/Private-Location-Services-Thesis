@@ -46,7 +46,7 @@ class OpenFHESSClientAdapter(ClientCryptoAdapter):
 
     def parse_response(self, response_data: dict, local_state: dict | None = None) -> list[dict]:
         if local_state is None:
-            raise ValueError("OpenFHE SS: missing local_state.")
+            raise ValueError("OpenFHE SS: missing local_state")
 
         rt = get_openfhe_ss_runtime(local_state["n_candidates"])
         dist_ct_b64: str = response_data["dist_ct_b64"]
@@ -57,7 +57,7 @@ class OpenFHESSClientAdapter(ClientCryptoAdapter):
 
         if winner_idx >= actual_n:
             raise ValueError(
-                f"OpenFHE SS: winner index {winner_idx} out of range ({actual_n} candidates)."
+                f"OpenFHE SS: winner index {winner_idx} out of range ({actual_n} candidates)"
             )
 
         winner = candidates[winner_idx]

@@ -1,5 +1,4 @@
 
-import time
 from pathlib import Path
 
 import numpy as np
@@ -88,15 +87,6 @@ def compile_for_n(n: int) -> None:
     enc_cfg = _make_encryption_config(n)
     inputset = _build_inputset(n)
 
-    n_pbs = max(0, (n - 1) * 3)
-    print(
-        f"[N={n:3d}] Compiling - {len(inputset)} inputset samples, "
-        f"~{n_pbs} PBS ops, p_error={_P_ERROR:.0e}",
-        flush=True,
-    )
-
-    t0 = time.time()
-
     compiler = fhe.Compiler(fn, enc_cfg)
     circuit = compiler.compile(
         inputset,
@@ -109,27 +99,9 @@ def compile_for_n(n: int) -> None:
     circuit.server.save(server_path)
     specs_path.write_bytes(circuit.client.specs.serialize())
 
-    elapsed = time.time() - t0
-    mins, secs = divmod(int(elapsed), 60)
-    print(
-        f"[N={n:3d}] Done in {mins}m {secs:02d}s"
-        f" - server: {server_path.name}  specs: {specs_path.name}",
-        flush=True,
-    )
-
 def main() -> None:
-    print(
-        f"Compiling Concrete find-minimum circuits for N = {SUPPORTED_N}\n"
-        f"  Inputset: 3 samples per circuit (was 4N+24)\n"
-        f"  Error budget: p_error={_P_ERROR:.0e} per PBS (circuit-size independent)\n",
-        flush=True,
-    )
-    t_total = time.time()
     for n in SUPPORTED_N:
         compile_for_n(n)
-    elapsed = time.time() - t_total
-    mins, secs = divmod(int(elapsed), 60)
-    print(f"\nAll circuits compiled in {mins}m {secs:02d}s", flush=True)
 
 if __name__ == "__main__":
     main()

@@ -9,7 +9,7 @@ from ....core.openfhe_ss_runtime import next_power_of_2 as _next_power_of_2
 from ..schemas import NearestKClientRequest
 from .nearest_k import execute_nearest_k
 
-SUPPORTED_STANDARD_SCHEMES = ["plaintext", "ckks", "concrete", "openfhe_ss"]
+SUPPORTED_STANDARD_SCHEMES = ["plaintext", "concrete", "openfhe_ss"]
 SUPPORTED_CONCRETE_N = [1, 5, 12, 13, 14, 15]
 SUPPORTED_OPENFHE_N = [1, 5, 12, 13, 14, 15, 22, 43, 62, 122]
 
@@ -46,8 +46,8 @@ def _save_session(session: dict) -> None:
         sessions.insert(0, session)
         sessions = sessions[:_MAX_SESSIONS]
         _HISTORY_FILE.write_text(json.dumps({"sessions": sessions}, indent=2))
-    except Exception as exc:
-        print(f"[Benchmark] Warning: could not save history: {exc}", flush=True)
+    except Exception:
+        pass
 
 
 def _build_run_entry(scheme: str, n_candidates: int | None, result: dict) -> dict:

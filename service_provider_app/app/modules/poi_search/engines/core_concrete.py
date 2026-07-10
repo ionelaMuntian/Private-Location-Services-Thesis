@@ -43,14 +43,13 @@ def _cleanup_expired_keys() -> None:
     for key_id in expired:
         _CONCRETE_KEY_STORE.pop(key_id, None)
 
-
 def execute_concrete_upload_keys(evaluation_keys_bytes: bytes) -> dict:
     _cleanup_expired_keys()
 
     if not evaluation_keys_bytes:
         raise HTTPException(
             status_code=422,
-            detail="Concrete evaluation keys are required.",
+            detail="Concrete evaluation keys are required",
         )
 
     key_id = str(uuid4())
@@ -73,8 +72,8 @@ def _resolve_evaluation_keys_bytes(request: ConcreteEvaluationRequest) -> bytes:
             raise HTTPException(
                 status_code=404,
                 detail=(
-                    "Concrete key_id was not found or expired. "
-                    "Upload the evaluation keys again."
+                    "Concrete key_id was not found or expired"
+                    "Upload the evaluation keys again"
                 ),
             )
         return entry["evaluation_keys_bytes"]
@@ -85,7 +84,7 @@ def _resolve_evaluation_keys_bytes(request: ConcreteEvaluationRequest) -> bytes:
 
     raise HTTPException(
         status_code=422,
-        detail="Concrete evaluation requires either key_id or evaluation_keys_b64.",
+        detail="Concrete evaluation requires either key_id or evaluation_keys_b64",
     )
 
 
@@ -102,7 +101,7 @@ def execute_concrete_candidates(request: ConcreteCandidatesRequest) -> dict:
     if not candidates:
         raise HTTPException(
             status_code=422,
-            detail=f"No POIs found for category '{request.category}'.",
+            detail=f"No POIs found for category '{request.category}'",
         )
 
     normalized = [
@@ -149,7 +148,7 @@ def execute_concrete_evaluation(request: ConcreteEvaluationRequest) -> dict:
             status_code=422,
             detail=(
                 f"Received {n} items but Concrete circuits are only compiled for "
-                f"N ∈ {SUPPORTED_N}."
+                f"N ∈ {SUPPORTED_N}"
             ),
         )
 

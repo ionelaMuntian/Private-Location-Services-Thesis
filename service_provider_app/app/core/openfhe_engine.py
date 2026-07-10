@@ -38,7 +38,7 @@ def load_crypto_context(context_b64: str):
     try:
         cc, ok = DeserializeCryptoContext(path, BINARY)
         if not ok:
-            raise RuntimeError("OpenFHE failed to deserialize CryptoContext.")
+            raise RuntimeError("OpenFHE failed to deserialize CryptoContext")
         return cc
     finally:
         Path(path).unlink(missing_ok=True)
@@ -50,7 +50,7 @@ def load_ciphertext(ciphertext_b64: str):
     try:
         ciphertext, ok = DeserializeCiphertext(path, BINARY)
         if not ok:
-            raise RuntimeError("OpenFHE failed to deserialize ciphertext.")
+            raise RuntimeError("OpenFHE failed to deserialize ciphertext")
         return ciphertext
     finally:
         Path(path).unlink(missing_ok=True)
@@ -62,13 +62,8 @@ def load_eval_mult_keys(cc, eval_mult_keys_b64: str) -> None:
     try:
         try:
             if not cc.DeserializeEvalMultKey(path, BINARY):
-                raise RuntimeError("OpenFHE failed to deserialize EvalMult keys.")
+                raise RuntimeError("OpenFHE failed to deserialize EvalMult keys")
         except RuntimeError as exc:
-            # The Python binding's cc.ClearEvalMultKeys() only clears keys for
-            # cc's own (empty) keyTag, not the joint-public-key tag already in
-            # the global store from a previous request.  When the same client
-            # sends the same persisted keys on every call, the global store
-            # already contains the correct keys — safe to reuse them.
             if "there is a key vector for the given keyTag" not in str(exc):
                 raise
     finally:

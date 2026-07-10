@@ -16,8 +16,6 @@ class CompanyRepository:
         self._init_company_db()
         self._init_users_db()
 
-    # Schema / table creation
-
     def _init_company_db(self) -> None:
         create_schema = f"CREATE SCHEMA IF NOT EXISTS {_COMPANY_SCHEMA};"
 
@@ -346,7 +344,6 @@ class CompanyRepository:
 
         return row is not None
 
-    # Company membership
 
     def add_employee_to_company(self, company_id: int, user_id: int) -> None:
         sql = f"""
@@ -397,7 +394,6 @@ class CompanyRepository:
 
         return [dict(row) for row in rows]
 
-    # User lookups
 
     def get_user_summary(self, user_id: int) -> dict | None:
         sql = f"""

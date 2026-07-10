@@ -7,9 +7,9 @@ psycopg[binary]
 PyJWT
 pwdlib[argon2]
 python-multipart
-tenseal
 numpy
 concrete-python
+concrete-ml==1.8.0
 email-validator
 openfhe
 grpcio

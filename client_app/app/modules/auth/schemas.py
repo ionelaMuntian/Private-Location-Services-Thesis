@@ -1,5 +1,3 @@
-# Purpose: defines the models that FastAPI uses
-
 from pydantic import BaseModel, EmailStr, Field
 
 

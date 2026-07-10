@@ -38,7 +38,6 @@ export default function LocationSharingPage() {
   const [loading, setLoading] = useState(false);
   const [companyLoading, setCompanyLoading] = useState(false);
   const [error, setError] = useState("");
-  const [successMessage, setSuccessMessage] = useState("");
   const [verificationStatus, setVerificationStatus] = useState(null);
   const [polling, setPolling] = useState(false);
   const pollAttemptsRef = useRef(0);
@@ -208,9 +207,6 @@ export default function LocationSharingPage() {
       };
 
       setSavedData(preparedData);
-      setSuccessMessage(
-        "Location data was saved. The company can now run a compliance check. Polling for your result..."
-      );
       startPolling(company.id);
     } catch (err) {
       console.error(err);
@@ -378,7 +374,6 @@ export default function LocationSharingPage() {
                 </form>
 
                 {error && <div className="poi-alert poi-alert-error">{error}</div>}
-                {successMessage && <div className="poi-alert">{successMessage}</div>}
               </section>
 
               <section className="poi-card poi-results-card">
@@ -462,7 +457,13 @@ export default function LocationSharingPage() {
 
                     {verificationStatus.last_updated && (
                       <p className="location-result-timestamp">
-                        Last checked: {new Date(verificationStatus.last_updated).toLocaleString()}
+                        Last checked: {new Date(verificationStatus.last_updated).toLocaleString([], {
+                          year: "numeric",
+                          month: "2-digit",
+                          day: "2-digit",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
                       </p>
                     )}
                   </div>

@@ -3,24 +3,19 @@ from fastapi import HTTPException, status
 from ...core.openfhe_multiparty_instance import openfhe_multiparty_runtime
 from ...infrastructure.grpc_client import post_to_service_provider
 from .repository import CompanyRepository
-from .schemas import (
-    AddEmployeeRequest,
-    CreateCompanyRequest,
-    JoinCompanyRequest,
-    SaveEncryptedHomeRequest,
-    SaveLatestLocationRequest,
-    SubmitLocationStatusRequest,
-)
+from .schemas import AddEmployeeRequest, CreateCompanyRequest
 
 repository = CompanyRepository()
 
-# the tolerance that it has when the user sits near the boundary
+# The tolerance the system has when the user sits near the boundary
 EPSILON = 1e-3
 
 COORD_SCALE = 100.0
 
+
 def _less_than_equal_zero(value: float) -> bool:
     return value <= EPSILON
+
 
 def _greater_than_equal_zero(value: float) -> bool:
     return value >= -EPSILON
@@ -76,7 +71,7 @@ def _compute_plaintext_compliance(location_input: dict, company: dict) -> dict:
     }
 
 
-class CompanyService:
+class CompanyAdminService:
     def initialize_storage(self) -> None:
         repository.initialize()
 
@@ -176,10 +171,6 @@ class CompanyService:
         companies = repository.get_admin_companies(current_user["id"])
         return {"companies": companies}
 
-    def get_my_companies(self, current_user: dict) -> dict:
-        companies = repository.get_user_companies(current_user["id"])
-        return {"companies": companies}
-
     def add_employee(self, request: AddEmployeeRequest, current_user: dict) -> dict:
         company = repository.get_company(request.company_id)
         if company is None:
@@ -202,71 +193,6 @@ class CompanyService:
             "user_id": request.user_id,
         }
 
-    def join_company(self, request: JoinCompanyRequest, current_user: dict) -> dict:
-        company = repository.get_company(request.company_id)
-        if company is None:
-            raise HTTPException(status_code=404, detail="Company not found")
-
-        repository.join_company(
-            company_id=request.company_id,
-            user_id=current_user["id"],
-        )
-
-        return {
-            "message": "Joined company successfully",
-            "company_id": request.company_id,
-        }
-
-    def save_latest_location( self, request: SaveLatestLocationRequest,  current_user: dict, ) -> dict:
-        company = repository.get_company(request.company_id)
-        if company is None:
-            raise HTTPException(status_code=404, detail="Company not found")
-
-        if not repository.is_employee_of_company(
-            company_id=request.company_id,
-            user_id=current_user["id"],
-        ):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Current user is not assigned to this company",
-            )
-
-        repository.save_latest_location_input(
-            user_id=current_user["id"],
-            data=request.model_dump(),
-        )
-
-        repository.clear_location_status(
-            user_id=current_user["id"],
-            company_id=request.company_id,
-        )
-
-        return {
-            "message": "Latest location data saved for later company verification",
-            "company_id": request.company_id,
-            "user_id": current_user["id"],
-        }
-
-    def save_encrypted_home( self, request: SaveEncryptedHomeRequest, current_user: dict, ) -> dict:
-        repository.save_encrypted_home(
-            user_id=current_user["id"],
-            data=request.model_dump(),
-        )
-
-        return {"message": "Encrypted home location saved successfully"}
-
-    def submit_status( self, request: SubmitLocationStatusRequest, current_user: dict, ) -> dict:
-        company = repository.get_company(request.company_id)
-        if company is None:
-            raise HTTPException(status_code = 404, detail = "Company not found")
-
-        repository.submit_status(
-            user_id = current_user["id"],
-            data = request.model_dump(),
-        )
-
-        return {"message": "Location compliance status submitted successfully"}
-
     def get_users_status(self, company_id: int, current_user: dict) -> dict:
         company = repository.get_company(company_id)
         if company is None:
@@ -274,8 +200,8 @@ class CompanyService:
 
         if not repository.is_company_admin(company_id, current_user["id"]):
             raise HTTPException(
-                status_code = status.HTTP_403_FORBIDDEN,
-                detail = "Only company administrators can view employee statuses",
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only company administrators can view employee statuses",
             )
 
         users = repository.get_users_status(company_id)
@@ -289,23 +215,23 @@ class CompanyService:
     async def run_employee_compliance_check(self, company_id: int, employee_user_id: int, current_user: dict,) -> dict:
         company = repository.get_company(company_id)
         if company is None:
-            raise HTTPException(status_code = 404, detail = "Company is not found")
+            raise HTTPException(status_code=404, detail="Company is not found")
 
         if not repository.is_company_admin(company_id, current_user["id"]):
             raise HTTPException(
-                status_code = status.HTTP_403_FORBIDDEN,
-                detail = "Only the company administrators can run compliance checks",
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only the company administrators can run compliance checks",
             )
 
         if not repository.is_employee_of_company(company_id, employee_user_id):
             raise HTTPException(
-                status_code = status.HTTP_404_NOT_FOUND,
-                detail = "Selected user is not assigned to this company",
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Selected user is not assigned to this company",
             )
 
         location_input = repository.get_latest_location_input(
-            company_id = company_id,
-            user_id = employee_user_id,
+            company_id=company_id,
+            user_id=employee_user_id,
         )
 
         if location_input is None:
@@ -483,22 +409,6 @@ class CompanyService:
         home_margin = min(home_north_m, home_south_m, home_east_m, home_west_m)
         office_margin = min(office_north_m, office_south_m, office_east_m, office_west_m)
 
-        print(
-            f"Compliance home bbox mins: N={home_north_m:.3f} S={home_south_m:.3f} "
-            f"E={home_east_m:.3f} W={home_west_m:.3f} - at_home={_greater_than_equal_zero(home_margin)}",
-            flush=True,
-        )
-        print(
-            f"Compliance office bbox mins: N={office_north_m:.3f} S={office_south_m:.3f} "
-            f"E={office_east_m:.3f} W={office_west_m:.3f} - at_office={_greater_than_equal_zero(office_margin)}",
-            flush=True,
-        )
-        print(
-            f"Compliance country: north={north_margin:.4f} south={south_margin:.4f} "
-            f"east={east_margin:.4f} west={west_margin:.4f}",
-            flush=True,
-        )
-
         # final decisions on whether the user is at home, office or country
         final_at_home = _greater_than_equal_zero(home_margin)
         final_at_office = _greater_than_equal_zero(office_margin)
@@ -563,79 +473,6 @@ class CompanyService:
             "plaintext_at_home": result["plaintext_at_home"],
             "plaintext_at_office": result["plaintext_at_office"],
             "plaintext_in_country": result["plaintext_in_country"],
-        }
-
-    def get_my_location_status(self, company_id: int, current_user: dict) -> dict:
-        company = repository.get_company(company_id)
-        if company is None:
-            raise HTTPException(status_code=404, detail="Company not found.")
-
-        if not repository.is_employee_of_company(company_id, current_user["id"]):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Current user is not assigned to this company.",
-            )
-
-        status_row = repository.get_user_location_status(
-            user_id=current_user["id"],
-            company_id=company_id,
-        )
-
-        if status_row is None:
-            return {
-                "company_id": company_id,
-                "in_country": None,
-                "at_home": None,
-                "at_office": None,
-                "last_updated": None,
-                "pending": True,
-            }
-
-        return {
-            "company_id": company_id,
-            "in_country": status_row["in_country"],
-            "at_home": status_row["at_home"],
-            "at_office": status_row["at_office"],
-            "last_updated": status_row["last_updated"],
-            "pending": False,
-        }
-
-    def get_compliance_job_status(self, job_id: int, current_user: dict) -> dict:
-        job = repository.get_compliance_job(job_id)
-        if job is None:
-            raise HTTPException(status_code=404, detail="Compliance job not found.")
-
-        is_admin = repository.is_company_admin(
-            company_id=job["company_id"],
-            user_id=current_user["id"],
-        )
-
-        is_owner = int(job["user_id"]) == int(current_user["id"])
-
-        if not is_admin and not is_owner:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You are not allowed to view this compliance job.",
-            )
-
-        return {
-            "job_id": job["id"],
-            "status": job["status"],
-            "encrypted_home_margin": job["encrypted_home_margin"],
-            "encrypted_office_margin": job["encrypted_office_margin"],
-            "encrypted_country_north_margin": job["encrypted_country_north_margin"],
-            "encrypted_country_south_margin": job["encrypted_country_south_margin"],
-            "encrypted_country_east_margin": job["encrypted_country_east_margin"],
-            "encrypted_country_west_margin": job["encrypted_country_west_margin"],
-            "user_partial_home_margin": job["user_partial_home_margin"],
-            "user_partial_office_margin": job["user_partial_office_margin"],
-            "user_partial_country_north_margin": job["user_partial_country_north_margin"],
-            "user_partial_country_south_margin": job["user_partial_country_south_margin"],
-            "user_partial_country_east_margin": job["user_partial_country_east_margin"],
-            "user_partial_country_west_margin": job["user_partial_country_west_margin"],
-            "final_at_home": job["final_at_home"],
-            "final_at_office": job["final_at_office"],
-            "final_in_country": job["final_in_country"],
         }
 
     def complete_compliance_job_demo(

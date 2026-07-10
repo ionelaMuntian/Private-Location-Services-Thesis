@@ -7,3 +7,6 @@ datasets/rba-dataset.csv
 
 # Concrete generated artifacts
 client_app/.artifacts/concrete/
+
+# Stale concrete-python compile-failure debug dumps (auto-generated in CWD on compile errors)
+/.artifacts/

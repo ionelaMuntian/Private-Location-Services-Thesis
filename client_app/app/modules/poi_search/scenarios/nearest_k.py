@@ -28,7 +28,6 @@ from ....infrastructure.grpc_client import (
     upload_concrete_keys_to_service_provider,
     upload_openfhe_ss_keys_from_files,
 )
-from ..crypto.ckks_client import CKKSClientAdapter
 from ..crypto.concrete_client import ConcreteClientAdapter
 from ..crypto.plaintext_client import PlaintextClientAdapter
 from ..schemas import NearestKClientRequest
@@ -48,12 +47,6 @@ def _compute_payload_sizes(scheme: str, prepared: dict) -> dict:
     enc_query = prepared.get("encrypted_query") or {}
     metadata = enc_query.get("metadata") or {}
     local_state = prepared.get("local_state") or {}
-
-    if scheme == "ckks":
-        return {
-            "ciphertext_bytes": _b64len(enc_query.get("payload") or ""),
-            "key_bytes": _b64len(metadata.get("public_context") or ""),
-        }
 
     if scheme == "concrete":
         enc_coords = metadata.get("encrypted_user_coords") or ""
@@ -79,8 +72,6 @@ def _compute_payload_sizes(scheme: str, prepared: dict) -> dict:
 def get_client_adapter(scheme: str):
     if scheme == "plaintext":
         return PlaintextClientAdapter()
-    if scheme == "ckks":
-        return CKKSClientAdapter()
     if scheme == "concrete":
         return ConcreteClientAdapter()
     if scheme == "openfhe_ss":
@@ -94,7 +85,7 @@ async def _execute_single_scheme(request: NearestKClientRequest) -> dict:
     if request.scheme == "all":
         raise HTTPException(
             status_code=400,
-            detail="Internal error: _execute_single_scheme cannot run scheme='all'.",
+            detail="Internal error: _execute_single_scheme cannot run scheme='all'",
         )
 
     lat_m_full, lon_m_full = _degrees_to_meters(request.latitude, request.longitude)
@@ -253,7 +244,7 @@ async def _execute_single_scheme(request: NearestKClientRequest) -> dict:
         if evaluation_keys_bytes is None:
             raise HTTPException(
                 status_code=500,
-                detail="Concrete local_state is missing evaluation_keys_bytes.",
+                detail="Concrete local_state is missing evaluation_keys_bytes",
             )
 
         upload_keys_timer = StepTimer()
@@ -440,7 +431,7 @@ async def execute_nearest_k(request: NearestKClientRequest) -> dict:
 
     runs = []
 
-    for scheme in ["plaintext", "ckks", "openfhe_ss"]:
+    for scheme in ["plaintext", "openfhe_ss"]:
         scheme_request = NearestKClientRequest(
             category=request.category,
             k=request.k,

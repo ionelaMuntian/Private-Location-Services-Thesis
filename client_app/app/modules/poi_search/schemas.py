@@ -3,8 +3,8 @@ from typing import List, Literal, Union
 from pydantic import BaseModel, Field
 
 
-SingleSchemeType = Literal["plaintext", "ckks", "concrete", "openfhe_ss"]
-SchemeType = Literal["plaintext", "ckks", "concrete", "openfhe_ss", "all"]
+SingleSchemeType = Literal["plaintext", "concrete", "openfhe_ss"]
+SchemeType = Literal["plaintext", "concrete", "openfhe_ss", "all"]
 
 
 class ClientTimingMetrics(BaseModel):

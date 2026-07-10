@@ -1,22 +1,11 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-
 class Settings(BaseSettings):
     app_name: str = "Client App - Trusted Side"
 
     service_provider_grpc_host: str = "service_provider_app"
     service_provider_grpc_port: int = 50051
     service_provider_base_url: str = "http://127.0.0.1:8001"
-
-    # CKKS (froom TenSEAL)
-    ckks_poly_modulus_degree: int = 8192
-    ckks_coeff_mod_bit_sizes: str = "60,40,40,60"
-    ckks_global_scale_bits: int = 40
-
-    # BFV  (from TenSEAL)
-    bfv_poly_modulus_degree: int = 8192
-    bfv_plain_modulus: int = 1032193
-    bfv_scale: int = 100
 
     # Auth DB
     auth_db_host: str = "127.0.0.1"
@@ -50,10 +39,6 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
     )
-
-    @property
-    def ckks_coeff_mod_bit_sizes_list(self) -> list[int]:
-        return [int(x.strip()) for x in self.ckks_coeff_mod_bit_sizes.split(",") if x.strip()]
 
     @property
     def auth_dsn(self) -> str:

@@ -1,13 +1,17 @@
 import asyncio
 import base64
 import json
-import traceback
 from urllib.parse import parse_qs, urlparse
 
 import grpc
 from pydantic import ValidationError
 
 from .generated import service_provider_pb2, service_provider_pb2_grpc
+from .modules.anomaly_detection.schemas import (
+    FheEvaluateRequest,
+    PredictPlaintextRequest,
+)
+from .modules.anomaly_detection.service import AnomalyDetectionServiceProviderService
 from .modules.company.schemas import ComplianceEvaluationRequest
 from .modules.company.service import CompanyComplianceService
 from .modules.poi_search.engines.core_concrete import execute_concrete_upload_keys
@@ -25,6 +29,7 @@ from .modules.poi_search.service import PoiSearchServiceProviderService
 
 poi_service = PoiSearchServiceProviderService()
 company_service = CompanyComplianceService()
+anomaly_service = AnomalyDetectionServiceProviderService()
 
 GRPC_MAX_MESSAGE_SIZE = -1
 
@@ -113,6 +118,22 @@ class ServiceProviderGatewayServicer(
                 result = company_service.evaluate_compliance(dto)
                 return _json_response(200, result)
 
+            if method == "GET" and clean_path == "/service/anomaly-detection/samples":
+                result = anomaly_service.list_samples()
+                return _json_response(200, result)
+
+            if method == "POST" and clean_path == "/service/anomaly-detection/predict-plaintext":
+                dto = PredictPlaintextRequest(**payload)
+                result = anomaly_service.predict_plaintext(dto.sample_id)
+                return _json_response(200, result)
+
+            if method == "POST" and clean_path == "/service/anomaly-detection/fhe-evaluate":
+                dto = FheEvaluateRequest(**payload)
+                result = anomaly_service.fhe_evaluate(
+                    dto.encrypted_query_b64, dto.evaluation_keys_b64
+                )
+                return _json_response(200, result)
+
             return _json_response(
                 404,
                 {
@@ -129,8 +150,6 @@ class ServiceProviderGatewayServicer(
             )
 
         except Exception as exc:
-            print(f"[gRPC handler error] {type(exc).__name__}: {exc}", flush=True)
-            traceback.print_exc()
             return _json_response(
                 500,
                 {
@@ -187,11 +206,6 @@ class ServiceProviderGatewayServicer(
             return _openfhe_ss_key_upload_response(200, result)
 
         except Exception as exc:
-            print(
-                f"[gRPC UploadOpenFHESSKeys error] {type(exc).__name__}: {exc}",
-                flush=True,
-            )
-            traceback.print_exc()
             return _openfhe_ss_key_upload_response(
                 500,
                 {"detail": f"{type(exc).__name__}: {exc}"},
@@ -214,8 +228,6 @@ async def serve() -> None:
 
     listen_addr = "[::]:50051"
     server.add_insecure_port(listen_addr)
-
-    print(f"Service Provider gRPC server listening on {listen_addr}", flush=True)
 
     await server.start()
     await server.wait_for_termination()

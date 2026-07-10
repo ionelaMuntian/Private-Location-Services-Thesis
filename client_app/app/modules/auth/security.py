@@ -1,5 +1,3 @@
-# Purpose: defines all functions need for administrating passwords: hashing, verifying, creating acces tokens
-
 from datetime import datetime, timedelta, timezone
 
 import jwt

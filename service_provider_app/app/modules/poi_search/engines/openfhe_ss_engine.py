@@ -36,8 +36,6 @@ _DIST_SCALE = 5e-9
 _N_VALUES = 128
 
 
-# Helpers
-
 def _b64decode(data: str) -> bytes:
     return base64.b64decode(data.encode("utf-8"))
 
@@ -74,8 +72,6 @@ def _cleanup_expired_keys() -> None:
         _CC_CACHE.pop(kid, None)
 
 
-# Key upload: single round
-
 def execute_openfhe_ss_upload_keys(
     crypto_context_b64: str,
     public_key_b64: str,
@@ -87,7 +83,6 @@ def execute_openfhe_ss_upload_keys(
     _cleanup_expired_keys()
 
     key_id = str(uuid4())
-    print(f"[OpenFHE SS] Key upload: key_id={key_id[:8]}...", flush=True)
 
     ReleaseAllContexts()
     _CC_CACHE.clear()
@@ -102,7 +97,6 @@ def execute_openfhe_ss_upload_keys(
     }
     _CC_CACHE[key_id] = cc
 
-    print(f"[OpenFHE SS] Keys loaded, ready for distance computation.", flush=True)
     return {
         "key_id": key_id,
         "expires_in_seconds": _KEY_TTL_SECONDS,
@@ -110,15 +104,13 @@ def execute_openfhe_ss_upload_keys(
     }
 
 
-# Deserialization helpers
-
 def _load_keys(key_id: str) -> dict:
     _cleanup_expired_keys()
     entry = _KEY_STORE.get(key_id)
     if entry is None:
         raise HTTPException(
             status_code=404,
-            detail="OpenFHE SS key_id not found or expired. Re-upload keys.",
+            detail="OpenFHE SS key_id not found or expired. Re-upload keys",
         )
     return entry
 
@@ -128,7 +120,7 @@ def _load_crypto_context(context_b64: str):
     try:
         cc, ok = DeserializeCryptoContext(path, BINARY)
         if not ok:
-            raise RuntimeError("OpenFHE SS: failed to deserialize CryptoContext.")
+            raise RuntimeError("OpenFHE SS: failed to deserialize CryptoContext")
         return cc
     finally:
         Path(path).unlink(missing_ok=True)
@@ -139,7 +131,7 @@ def _load_eval_mult_keys(cc, emk_b64: str) -> None:
     try:
         try:
             if not cc.DeserializeEvalMultKey(path, BINARY):
-                raise RuntimeError("OpenFHE SS: failed to deserialize EvalMult keys.")
+                raise RuntimeError("OpenFHE SS: failed to deserialize EvalMult keys")
         except RuntimeError as exc:
             if "there is a key vector for the given keyTag" not in str(exc):
                 raise
@@ -154,7 +146,7 @@ def _load_eval_automorphism_keys(cc, eak_b64: str) -> None:
     try:
         try:
             if not cc.DeserializeEvalAutomorphismKey(path, BINARY):
-                raise RuntimeError("OpenFHE SS: failed to deserialize EvalAutomorphism keys.")
+                raise RuntimeError("OpenFHE SS: failed to deserialize EvalAutomorphism keys")
         except RuntimeError as exc:
             if "key" in str(exc).lower() and "already" in str(exc).lower():
                 pass  # duplicate key, safe to ignore
@@ -169,7 +161,7 @@ def _load_ciphertext(ct_b64: str):
     try:
         ct, ok = DeserializeCiphertext(path, BINARY)
         if not ok:
-            raise RuntimeError("OpenFHE SS: failed to deserialize ciphertext.")
+            raise RuntimeError("OpenFHE SS: failed to deserialize ciphertext")
         return ct
     finally:
         Path(path).unlink(missing_ok=True)
@@ -177,12 +169,12 @@ def _load_ciphertext(ct_b64: str):
 
 def _load_public_key(pk_b64: str):
     if _DeserializePublicKey is None:
-        raise RuntimeError("OpenFHE SS: DeserializePublicKey not found in openfhe module.")
+        raise RuntimeError("OpenFHE SS: DeserializePublicKey not found in openfhe module")
     path = _write_b64_to_temp(pk_b64)
     try:
         pk, ok = _DeserializePublicKey(path, BINARY)
         if not ok:
-            raise RuntimeError("OpenFHE SS: failed to deserialize public key.")
+            raise RuntimeError("OpenFHE SS: failed to deserialize public key")
         return pk
     finally:
         Path(path).unlink(missing_ok=True)
@@ -207,7 +199,7 @@ def execute_openfhe_ss_evaluate(
             status_code=422,
             detail=(
                 f"n_candidates={n_candidates} does not match the uploaded key setup "
-                f"(n={n}). Re-upload keys."
+                f"(n={n}). Re-upload keys"
             ),
         )
 
@@ -217,7 +209,7 @@ def execute_openfhe_ss_evaluate(
     if actual_n == 0:
         raise HTTPException(
             status_code=404,
-            detail=f"No POIs found for category '{category}'.",
+            detail=f"No POIs found for category '{category}'",
         )
 
     candidates = [
@@ -246,17 +238,12 @@ def execute_openfhe_ss_evaluate(
 
     cc = _CC_CACHE.get(key_id)
     if cc is None:
-        raise HTTPException(status_code=404, detail="OpenFHE SS: CC not in cache.")
+        raise HTTPException(status_code=404, detail="OpenFHE SS: CC not in cache")
 
     ct_qy = _load_ciphertext(encrypted_qy)
     ct_qx = _load_ciphertext(encrypted_qx)
 
     compute_timer = StepTimer()
-    print(
-        f"[OpenFHE SS] Computing distances: {actual_n} real candidates, "
-        f"batch_size={n}...",
-        flush=True,
-    )
 
     py_plain = cc.MakeCKKSPackedPlaintext(py_vals)
     px_plain = cc.MakeCKKSPackedPlaintext(px_vals)
@@ -283,7 +270,6 @@ def execute_openfhe_ss_evaluate(
         dist2_scaled = cc.EvalMult(dist2_ct, scale_plain)
 
     compute_ms = compute_timer.elapsed_ms()
-    print(f"[OpenFHE SS] Distances computed in {compute_ms:.1f}ms.", flush=True)
 
     dist_ct_b64 = _serialize_to_b64(dist2_scaled)
     total_ms = total_timer.elapsed_ms()

@@ -1,7 +1,5 @@
 
 import json
-import sys
-import traceback
 from collections.abc import AsyncIterator
 from pathlib import Path
 
@@ -20,11 +18,6 @@ GRPC_MAX_MESSAGE_SIZE = -1
 # Chunk size for streaming evaluation keys
 CONCRETE_KEY_CHUNK_SIZE = 4 * 1024 * 1024
 OPENFHE_SS_KEY_CHUNK_SIZE = 4 * 1024 * 1024
-
-
-def _log(msg: str) -> None:
-    print(msg, flush=True)
-    sys.stdout.flush()
 
 
 def _target() -> str:
@@ -47,12 +40,6 @@ async def call_service_provider(
 
     try:
         payload_json = json.dumps(payload, ensure_ascii=False)
-        payload_size = len(payload_json)
-
-        _log(
-            f"[gRPC {method} {path}] payload size: {payload_size} bytes "
-            f"(~{payload_size / 1024:.0f} KB / {payload_size / (1024 * 1024):.2f} MB)"
-        )
 
         async with grpc.aio.insecure_channel(
             _target(),
@@ -73,8 +60,6 @@ async def call_service_provider(
                 compression=grpc.Compression.Gzip,
             )
 
-        _log(f"[gRPC {method} {path}] status={response.status_code}")
-
         try:
             response_data = json.loads(response.json_payload or "{}")
         except Exception:
@@ -89,8 +74,6 @@ async def call_service_provider(
         return response_data
 
     except grpc.aio.AioRpcError as exc:
-        _log(f"[gRPC {method} {path}] grpc error: {exc.code()}: {exc.details()}")
-        traceback.print_exc()
         raise HTTPException(
             status_code=502,
             detail=f"Service provider gRPC unavailable: {exc.code()}: {exc.details()}",
@@ -100,8 +83,6 @@ async def call_service_provider(
         raise
 
     except Exception as exc:
-        _log(f"[gRPC {method} {path}] unexpected error: {type(exc).__name__}: {exc}")
-        traceback.print_exc()
         raise HTTPException(
             status_code=500,
             detail=f"Unexpected gRPC client error: {type(exc).__name__}: {exc}",
@@ -115,12 +96,6 @@ async def upload_concrete_keys_to_service_provider(
 
     async def chunk_generator() -> AsyncIterator[service_provider_pb2.ConcreteKeyChunk]:
         total_size = len(evaluation_keys_bytes)
-
-        _log(
-            f"[gRPC STREAM UploadConcreteKeys] total size: {total_size} bytes "
-            f"(~{total_size / (1024 * 1024):.2f} MB), "
-            f"chunk size: {chunk_size} bytes"
-        )
 
         for start in range(0, total_size, chunk_size):
             end = min(start + chunk_size, total_size)
@@ -142,8 +117,6 @@ async def upload_concrete_keys_to_service_provider(
                 compression=grpc.Compression.Gzip,
             )
 
-        _log(f"[gRPC STREAM UploadConcreteKeys] status={response.status_code}")
-
         try:
             response_data = json.loads(response.json_payload or "{}")
         except Exception:
@@ -158,11 +131,6 @@ async def upload_concrete_keys_to_service_provider(
         return response_data
 
     except grpc.aio.AioRpcError as exc:
-        _log(
-            f"[gRPC STREAM UploadConcreteKeys] grpc error: "
-            f"{exc.code()}: {exc.details()}"
-        )
-        traceback.print_exc()
         raise HTTPException(
             status_code=502,
             detail=f"Concrete key upload failed: {exc.code()}: {exc.details()}",
@@ -172,11 +140,6 @@ async def upload_concrete_keys_to_service_provider(
         raise
 
     except Exception as exc:
-        _log(
-            f"[gRPC STREAM UploadConcreteKeys] unexpected error: "
-            f"{type(exc).__name__}: {exc}"
-        )
-        traceback.print_exc()
         raise HTTPException(
             status_code=500,
             detail=f"Unexpected Concrete key upload error: {type(exc).__name__}: {exc}",
@@ -197,11 +160,6 @@ async def upload_openfhe_ss_keys_from_files(
         for key_name, file_path in key_files.items():
             p = Path(file_path)
             try:
-                total = p.stat().st_size
-                _log(
-                    f"[gRPC STREAM UploadOpenFHESSKeys] key={key_name} "
-                    f"size={total} bytes (~{total / (1024 * 1024):.2f} MB)"
-                )
                 with open(p, "rb") as f:
                     while True:
                         data = f.read(chunk_size)
@@ -228,8 +186,6 @@ async def upload_openfhe_ss_keys_from_files(
                 compression=grpc.Compression.Gzip,
             )
 
-        _log(f"[gRPC STREAM UploadOpenFHESSKeys] status={response.status_code}")
-
         try:
             response_data = json.loads(response.json_payload or "{}")
         except Exception:
@@ -244,11 +200,6 @@ async def upload_openfhe_ss_keys_from_files(
         return response_data
 
     except grpc.aio.AioRpcError as exc:
-        _log(
-            f"[gRPC STREAM UploadOpenFHESSKeys] grpc error: "
-            f"{exc.code()}: {exc.details()}"
-        )
-        traceback.print_exc()
         raise HTTPException(
             status_code=502,
             detail=f"OpenFHE SS key upload failed: {exc.code()}: {exc.details()}",
@@ -258,11 +209,6 @@ async def upload_openfhe_ss_keys_from_files(
         raise
 
     except Exception as exc:
-        _log(
-            f"[gRPC STREAM UploadOpenFHESSKeys] unexpected error: "
-            f"{type(exc).__name__}: {exc}"
-        )
-        traceback.print_exc()
         raise HTTPException(
             status_code=500,
             detail=f"Unexpected OpenFHE SS key upload error: {type(exc).__name__}: {exc}",
@@ -275,18 +221,12 @@ async def upload_openfhe_ss_switching_keys(
     chunk_size: int = OPENFHE_SS_KEY_CHUNK_SIZE,
 ) -> dict:
     async def chunk_generator() -> AsyncIterator[service_provider_pb2.OpenFHESSKeyChunk]:
-        # Signal Round 2 by sending the key_id first
         yield service_provider_pb2.OpenFHESSKeyChunk(
             data=key_id.encode(),
             key_name="key_id",
         )
         p = Path(eval_automorphism_keys_file)
         try:
-            total = p.stat().st_size
-            _log(
-                f"[gRPC STREAM UploadOpenFHESSKeys R2] eval_automorphism_keys "
-                f"size={total} bytes (~{total / (1024 * 1024):.2f} MB)"
-            )
             with open(p, "rb") as f:
                 while True:
                     data = f.read(chunk_size)
@@ -312,7 +252,6 @@ async def upload_openfhe_ss_switching_keys(
                 compression=grpc.Compression.Gzip,
             )
 
-        _log(f"[gRPC STREAM UploadOpenFHESSKeys R2] status={response.status_code}")
         try:
             response_data = json.loads(response.json_payload or "{}")
         except Exception:
@@ -326,8 +265,6 @@ async def upload_openfhe_ss_switching_keys(
         return response_data
 
     except grpc.aio.AioRpcError as exc:
-        _log(f"[gRPC STREAM UploadOpenFHESSKeys R2] grpc error: {exc.code()}: {exc.details()}")
-        traceback.print_exc()
         raise HTTPException(
             status_code=502,
             detail=f"OpenFHE SS round-2 key upload failed: {exc.code()}: {exc.details()}",
@@ -337,8 +274,6 @@ async def upload_openfhe_ss_switching_keys(
         raise
 
     except Exception as exc:
-        _log(f"[gRPC STREAM UploadOpenFHESSKeys R2] error: {type(exc).__name__}: {exc}")
-        traceback.print_exc()
         raise HTTPException(
             status_code=500,
             detail=f"OpenFHE SS round-2 key upload error: {type(exc).__name__}: {exc}",

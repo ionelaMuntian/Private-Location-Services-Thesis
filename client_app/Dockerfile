@@ -5,18 +5,22 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     binutils \
+    cmake \
     && rm -rf /var/lib/apt/lists/*
 
 COPY client_app/requirements.txt ./requirements.txt
 
-RUN pip install --no-cache-dir --upgrade pip && \
+RUN echo "setuptools<82" > /tmp/constraints.txt && \
+    pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir "setuptools<82" wheel && \
     pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu && \
-    pip install --no-cache-dir -r requirements.txt
+    PIP_CONSTRAINT=/tmp/constraints.txt pip install --no-cache-dir -r requirements.txt
 
 COPY proto ./proto
 COPY client_app/app ./app
 COPY client_app/tools ./tools
 COPY client_app/.artifacts ./.artifacts
+COPY service_provider_app/app/modules/anomaly_detection/models/fhe_model/client.zip ./.artifacts/anomaly_detection/client.zip
 COPY client_app/.env ./.env
 
 RUN mkdir -p ./app/generated && \

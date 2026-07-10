@@ -460,9 +460,7 @@ export default function PoiSearchPage() {
 
                 {loading && (
                   <p className="poi-empty">
-                    {form.scheme === "concrete"
-                      ? "Running Concrete FHE — this may take several minutes..."
-                      : form.scheme === "openfhe_ss"
+                    {form.scheme === "openfhe_ss"
                       ? "Running OpenFHE Scheme Switching — please wait..."
                       : "Searching..."}
                   </p>

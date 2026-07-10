@@ -4,8 +4,8 @@ from typing import Any, List, Literal
 from pydantic import BaseModel, Field, model_validator
 
 
-SingleSchemeType = Literal["plaintext", "ckks", "concrete", "openfhe_ss"]
-SchemeType = Literal["plaintext", "ckks", "concrete", "openfhe_ss"]
+SingleSchemeType = Literal["plaintext", "concrete", "openfhe_ss"]
+SchemeType = Literal["plaintext", "concrete", "openfhe_ss"]
 
 
 class ServerTimingMetrics(BaseModel):
@@ -51,7 +51,7 @@ class ServiceProviderNearestKRequest(BaseModel):
             raise ValueError("plaintext_query is required when scheme='plaintext'")
 
         if (
-            self.scheme in {"ckks", "concrete"}
+            self.scheme == "concrete"
             and self.encrypted_query is None
         ):
             raise ValueError(
@@ -59,7 +59,7 @@ class ServiceProviderNearestKRequest(BaseModel):
             )
 
         if (
-            self.scheme in {"ckks", "concrete"}
+            self.scheme == "concrete"
             and self.encrypted_query is not None
         ):
             forbidden = {

@@ -3,12 +3,13 @@ uvicorn[standard]
 psycopg[binary]
 pydantic
 pydantic-settings
-tenseal
 numpy
 concrete-python
+concrete-ml==1.8.0
 openfhe
 grpcio
 grpcio-tools
 protobuf
 scikit-learn
 joblib
+xgboost

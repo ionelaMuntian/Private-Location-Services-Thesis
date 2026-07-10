@@ -81,8 +81,6 @@ class OpenFHESSClientRuntime:
         HEStd_NotSet = _get_hestd_not_set()
         STD128 = _get_std128_param()
 
-        print(f"[OpenFHE SS] Setting up: n={self.n}, depth={_SS_DEPTH}, FHEW=STD128", flush=True)
-
         params = CCParamsCKKSRNS()
         params.SetMultiplicativeDepth(_SS_DEPTH)
         params.SetScalingModSize(59)
@@ -113,17 +111,13 @@ class OpenFHESSClientRuntime:
         ss_params.SetComputeArgmin(True)
         ss_params.SetOneHotEncoding(True)
         lwe_sk = cc.EvalSchemeSwitchingSetup(ss_params)
-        print("EvalSchemeSwitchingSetup done", flush=True)
 
         bfhcc = cc.GetBinCCForSchemeSwitch()
         bfhcc.BTKeyGen(lwe_sk)
-        print("BTKeyGen done", flush=True)
 
         cc.EvalSchemeSwitchingKeyGen(keys, lwe_sk)
-        print("EvalSchemeSwitchingKeyGen done", flush=True)
 
         cc.EvalCKKStoFHEWPrecompute()
-        print("EvalCKKStoFHEWPrecompute done", flush=True)
 
         return cc, keys
 
@@ -167,11 +161,6 @@ class OpenFHESSClientRuntime:
         finally:
             Path(path).unlink(missing_ok=True)
 
-        print(
-            f"[OpenFHE SS] Running EvalMinSchemeSwitching locally "
-            f"(n={self.n}, actual={actual_n})...",
-            flush=True,
-        )
         result = self.cc.EvalMinSchemeSwitching(ct, self.keys.publicKey, self.n, self.n)
 
         if isinstance(result, (list, tuple)) and len(result) >= 2:
@@ -186,11 +175,5 @@ class OpenFHESSClientRuntime:
         if not values:
             raise ValueError("OpenFHE SS: empty argmin result")
 
-        print(
-            f"[OpenFHE SS] Argmin one-hot (first {actual_n}): "
-            f"{[f'{v:.4f}' for v in values]}",
-            flush=True,
-        )
         winner_idx = max(range(len(values)), key=lambda i: abs(values[i]))
-        print(f"[OpenFHE SS] Winner: slot {winner_idx}", flush=True)
         return winner_idx

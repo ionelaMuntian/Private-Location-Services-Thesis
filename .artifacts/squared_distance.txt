@@ -1,4 +1,0 @@
-def squared_distance(qx: np.int64, qy: np.int64, px: np.int64, py: np.int64) -> np.int64:
-    dx = qx - px
-    dy = qy - py
-    return dx * dx + dy * dy

@@ -1,0 +1,1 @@
+["distance_km", "speed_kmh", "time_delta_h", "same_country", "same_region", "same_city", "same_browser", "same_os", "same_device", "same_asn", "hour_of_day", "is_weekend", "is_attack_ip", "prev_is_attack_ip", "prev_login_failed", "same_ip", "same_ip_prefix", "is_first_login"]

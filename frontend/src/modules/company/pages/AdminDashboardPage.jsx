@@ -566,7 +566,17 @@ export default function AdminDashboardPage() {
                                     </tr>
                                     <tr>
                                       <th>Last Updated</th>
-                                      <td colSpan={3}>{selectedEmployeeStatus.last_updated || "—"}</td>
+                                      <td colSpan={3}>
+                                        {selectedEmployeeStatus.last_updated
+                                          ? new Date(selectedEmployeeStatus.last_updated).toLocaleString([], {
+                                              year: "numeric",
+                                              month: "2-digit",
+                                              day: "2-digit",
+                                              hour: "2-digit",
+                                              minute: "2-digit",
+                                            })
+                                          : "—"}
+                                      </td>
                                     </tr>
                                   </tbody>
                                 </table>

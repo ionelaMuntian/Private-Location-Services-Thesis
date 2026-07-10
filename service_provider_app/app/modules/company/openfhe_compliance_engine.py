@@ -10,12 +10,9 @@ class OpenFHEComplianceEngine:
     def evaluate(self, payload: dict) -> dict:
         metadata = payload["metadata"]
 
-        print("[Compliance] deserializing crypto context...", flush=True)
         cc = load_crypto_context(metadata["crypto_context"])
-        print("[Compliance] loading eval mult keys...", flush=True)
         load_eval_mult_keys(cc, metadata["eval_mult_keys"])
 
-        print("[Compliance] computing home bbox margins...", flush=True)
         enc_home_north_margin = cc.EvalSub(
             load_ciphertext(payload["encrypted_home_north"]),
             load_ciphertext(payload["encrypted_current_lat"]),
@@ -33,7 +30,6 @@ class OpenFHEComplianceEngine:
             load_ciphertext(payload["encrypted_home_west"]),
         )
 
-        print("[Compliance] computing office bbox margins...", flush=True)
         enc_office_north_margin = cc.EvalSub(
             load_ciphertext(payload["encrypted_office_north"]),
             load_ciphertext(payload["encrypted_current_lat"]),
@@ -51,7 +47,6 @@ class OpenFHEComplianceEngine:
             load_ciphertext(payload["encrypted_office_west"]),
         )
 
-        print("[Compliance] computing country margins...", flush=True)
         enc_country_north_margin = cc.EvalSub(
             load_ciphertext(payload["encrypted_country_north"]),
             load_ciphertext(payload["encrypted_current_lat"]),
@@ -69,7 +64,6 @@ class OpenFHEComplianceEngine:
             load_ciphertext(payload["encrypted_country_west"]),
         )
 
-        print("[Compliance] serializing results...", flush=True)
         return {
             "encrypted_home_north_margin":   dump_ciphertext(enc_home_north_margin),
             "encrypted_home_south_margin":   dump_ciphertext(enc_home_south_margin),

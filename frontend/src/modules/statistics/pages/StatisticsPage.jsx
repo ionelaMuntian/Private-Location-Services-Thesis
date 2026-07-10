@@ -9,10 +9,7 @@ import "../styles/statistics.css";
 
 const BENCHMARK_URL = "http://127.0.0.1:8000/client/poi/benchmark";
 const HISTORY_URL = "http://127.0.0.1:8000/client/poi/benchmark/history";
-const SIM_URL = "http://127.0.0.1:8000/client/poi/simulate-performance";
-const SIM_HISTORY_URL = "http://127.0.0.1:8000/client/poi/simulate-performance/history";
 const BENCHMARK_TIMEOUT_MS = 7200000;
-const SIM_TIMEOUT_MS = 14400000;
 
 const SCHEME_OPTIONS = ["plaintext", "concrete", "openfhe_ss"];
 const CONCRETE_N_OPTIONS = [1, 5, 12, 14, 15];
@@ -41,15 +38,6 @@ function fmtBytes(v) {
 
 function fmtBytesShort(v) {
   return `${(v / 1048576).toFixed(2)}MB`;
-}
-
-function fmtTimestamp(ts) {
-  if (!ts) return "";
-  const d = new Date(ts);
-  return d.toLocaleString("en-GB", {
-    day: "2-digit", month: "short",
-    hour: "2-digit", minute: "2-digit",
-  });
 }
 
 function haversineKm(lat1, lon1, lat2, lon2) {
@@ -100,24 +88,17 @@ export default function StatisticsPage() {
   const [selectedN, setSelectedN] = useState([]);
 
   const [loading, setLoading] = useState(false);
-  const [historyLoading, setHistoryLoading] = useState(true);
   const [progress, setProgress] = useState("");
   const [error, setError] = useState("");
 
   const [history, setHistory] = useState([]);
   const [currentSession, setCurrentSession] = useState(null);
 
-  const [simLoading, setSimLoading] = useState(false);
-  const [simError, setSimError] = useState("");
-  const [simSession, setSimSession] = useState(null);
-  const [simHistory, setSimHistory] = useState([]);
-  const [simElapsed, setSimElapsed] = useState(0);
-
   useEffect(() => {
     const token = localStorage.getItem("access_token");
-    if (!token) { setHistoryLoading(false); return; }
+    if (!token) return;
 
-    const benchmarkReq = axios
+    axios
       .get(HISTORY_URL, { headers: { Authorization: `Bearer ${token}` } })
       .then((res) => {
         const sessions = res.data?.sessions || [];
@@ -125,17 +106,6 @@ export default function StatisticsPage() {
         if (sessions.length > 0) setCurrentSession(sessions[0]);
       })
       .catch(() => {});
-
-    const simReq = axios
-      .get(SIM_HISTORY_URL, { headers: { Authorization: `Bearer ${token}` } })
-      .then((res) => {
-        const sessions = res.data?.sessions || [];
-        setSimHistory(sessions);
-        if (sessions.length > 0) setSimSession(sessions[0]);
-      })
-      .catch(() => {});
-
-    Promise.allSettled([benchmarkReq, simReq]).finally(() => setHistoryLoading(false));
   }, []);
 
   const toggleScheme = (s) =>
@@ -206,34 +176,6 @@ export default function StatisticsPage() {
       setError(typeof msg === "string" ? msg : JSON.stringify(msg));
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleRunSimulation = async () => {
-    const token = localStorage.getItem("access_token");
-    if (!token) { navigate("/login"); return; }
-    setSimLoading(true);
-    setSimError("");
-    setSimElapsed(0);
-
-    const startMs = Date.now();
-    const ticker = setInterval(() => setSimElapsed(Math.floor((Date.now() - startMs) / 1000)), 1000);
-
-    try {
-      const response = await axios.post(
-        SIM_URL,
-        {},
-        { headers: { Authorization: `Bearer ${token}` }, timeout: SIM_TIMEOUT_MS }
-      );
-      const session = response.data;
-      setSimSession(session);
-      setSimHistory((prev) => [session, ...prev].slice(0, 10));
-    } catch (err) {
-      const msg = err?.response?.data?.detail || err?.message || "Simulation failed.";
-      setSimError(typeof msg === "string" ? msg : JSON.stringify(msg));
-    } finally {
-      clearInterval(ticker);
-      setSimLoading(false);
     }
   };
 
@@ -438,12 +380,6 @@ export default function StatisticsPage() {
               {error && <div className="poi-alert poi-alert-error">{error}</div>}
             </div>
 
-
-            {!historyLoading && !loading && runs.length === 0 && (
-              <div className="poi-card stats-section stats-empty">
-                <p>No benchmark data yet. Configure the options above and click <strong>Run Benchmark</strong>.</p>
-              </div>
-            )}
 
             {runs.length > 0 && (
               <CollapsibleCard title="FHE Performance Metrics">
@@ -735,45 +671,6 @@ export default function StatisticsPage() {
               </CollapsibleCard>
             )}
 
-            <div className="stats-sim-divider">
-              <span>Performance Simulation</span>
-            </div>
-
-            <CollapsibleCard title="Compute Performance">
-              <button
-                className="primary-btn stats-run-btn"
-                onClick={handleRunSimulation}
-                disabled={simLoading}
-              >
-                {simLoading
-                  ? `Running simulation… ${simElapsed > 0 ? `(${simElapsed}s elapsed)` : ""}`
-                  : "Compute Performance"}
-              </button>
-              {simError && <div className="poi-alert poi-alert-error" style={{ marginTop: 12 }}>{simError}</div>}
-            </CollapsibleCard>
-
-            {simHistory.length > 0 && (
-              <CollapsibleCard title="Simulation History">
-                <div className="stats-history-scroll">
-                  {simHistory.map((s) => (
-                    <button
-                      key={s.id}
-                      type="button"
-                      className={`stats-session-card${simSession?.id === s.id ? " active" : ""}`}
-                      onClick={() => setSimSession(s)}
-                    >
-                      <span className="stats-session-time">{fmtTimestamp(s.timestamp)}</span>
-                      <span className="stats-session-cat">{s.n_test_points} points</span>
-                      <span className="stats-session-runs">
-                        {(s.schemes || []).join(" · ")}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </CollapsibleCard>
-            )}
-
-            {simSession?.summary && <SimulationResults session={simSession} />}
           </div>
         </main>
       </div>
@@ -781,137 +678,3 @@ export default function StatisticsPage() {
   );
 }
 
-const SIM_SCHEME_LABELS = { concrete: "Concrete PBS", openfhe_ss: "OpenFHE SS" };
-const SIM_SCHEME_COLORS = { concrete: "#1d3461", openfhe_ss: "#e06b2d" };
-
-function SimulationResults({ session }) {
-  const { summary, timestamp, categories = [], schemes = [] } = session;
-
-  const summaryRows = schemes.map((s) => {
-    const d = summary[s] || {};
-    return { scheme: s, ...d };
-  });
-
-  const catAccData = (categories.length ? categories : ["hospital", "school", "stationery", "post_office", "cosmetics", "gallery"])
-    .map((cat) => {
-      const entry = { category: cat };
-      schemes.forEach((s) => {
-        const acc = summary[s]?.per_category?.[cat]?.top1_accuracy;
-        entry[SIM_SCHEME_LABELS[s] || s] = acc != null ? +(acc * 100).toFixed(1) : null;
-      });
-      return entry;
-    });
-
-  const catErrData = (categories.length ? categories : ["hospital", "school", "stationery", "post_office", "cosmetics", "gallery"])
-    .map((cat) => {
-      const entry = { category: cat };
-      schemes.forEach((s) => {
-        const err = summary[s]?.per_category?.[cat]?.mean_poi_distance_km;
-        entry[SIM_SCHEME_LABELS[s] || s] = err != null ? +err.toFixed(4) : null;
-      });
-      return entry;
-    });
-
-  return (
-    <>
-      <CollapsibleCard
-        title="Overall Accuracy Summary"
-        badge={timestamp && <span className="stats-session-badge">{fmtTimestamp(timestamp)}</span>}
-      >
-        <div className="stats-plain-wrap">
-          <table className="stats-plain-table">
-            <thead>
-              <tr>
-                <th>Scheme</th>
-                <th>Top-1 accuracy (%)</th>
-                <th>Mean dist. A-B (km)</th>
-                <th>RMSE (km)</th>
-                <th>Max dist. A-B (km)</th>
-                <th>Runs</th>
-                <th>Errors</th>
-              </tr>
-            </thead>
-            <tbody>
-              {summaryRows.map((r) => (
-                <tr key={r.scheme}>
-                  <td><strong>{SIM_SCHEME_LABELS[r.scheme] || r.scheme}</strong></td>
-                  <td>{r.top1_accuracy != null ? `${(r.top1_accuracy * 100).toFixed(1)}` : "—"}</td>
-                  <td>{r.mean_poi_distance_km != null ? r.mean_poi_distance_km.toFixed(4) : "—"}</td>
-                  <td>{r.rmse_poi_distance_km != null ? r.rmse_poi_distance_km.toFixed(4) : "—"}</td>
-                  <td>{r.max_poi_distance_km != null ? r.max_poi_distance_km.toFixed(4) : "—"}</td>
-                  <td>{r.total ?? "—"}</td>
-                  <td>{r.error_count ?? "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </CollapsibleCard>
-
-      <CollapsibleCard title="Per-Category Accuracy">
-        <div className="stats-plain-wrap">
-          <table className="stats-plain-table">
-            <thead>
-              <tr>
-                <th>Category</th>
-                {schemes.flatMap((s) => [
-                  <th key={`${s}-acc`}>{SIM_SCHEME_LABELS[s] || s} top-1 (%)</th>,
-                  <th key={`${s}-err`}>{SIM_SCHEME_LABELS[s] || s} mean dist. (km)</th>,
-                ])}
-              </tr>
-            </thead>
-            <tbody>
-              {(categories.length ? categories : ["hospital", "school", "stationery", "post_office", "cosmetics", "gallery"]).map((cat) => (
-                <tr key={cat}>
-                  <td><strong>{cat}</strong></td>
-                  {schemes.flatMap((s) => {
-                    const cd = summary[s]?.per_category?.[cat] || {};
-                    return [
-                      <td key={`${s}-acc`}>{cd.top1_accuracy != null ? `${(cd.top1_accuracy * 100).toFixed(0)}` : "—"}</td>,
-                      <td key={`${s}-err`}>{cd.mean_poi_distance_km != null ? cd.mean_poi_distance_km.toFixed(4) : "—"}</td>,
-                    ];
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </CollapsibleCard>
-
-      <CollapsibleCard title="Per-Category Charts">
-        <div className="stats-charts-grid">
-          <div className="stats-chart-block">
-            <p className="stats-chart-block-title">Top-1 Accuracy by Category</p>
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={catAccData} margin={{ top: 8, right: 16, left: 0, bottom: 48 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(29, 52, 97, 0.1)" />
-                <XAxis dataKey="category" tick={{ fontSize: 11, fill: "#6b655d" }} angle={-30} textAnchor="end" interval={0} />
-                <YAxis tick={{ fontSize: 11, fill: "#6b655d" }} tickFormatter={(v) => `${v}%`} domain={[0, 100]} unit="%" />
-                <Tooltip formatter={(v, name) => [`${v}%`, name]} contentStyle={{ borderRadius: 10, fontSize: 12 }} />
-                <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
-                {schemes.map((s) => (
-                  <Line key={s} type="monotone" dataKey={SIM_SCHEME_LABELS[s] || s} stroke={SIM_SCHEME_COLORS[s] || "#888"} strokeWidth={2} dot={{ r: 4 }} />
-                ))}
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="stats-chart-block">
-            <p className="stats-chart-block-title">Mean Distance A-B by Category</p>
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={catErrData} margin={{ top: 8, right: 16, left: 0, bottom: 48 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(29, 52, 97, 0.1)" />
-                <XAxis dataKey="category" tick={{ fontSize: 11, fill: "#6b655d" }} angle={-30} textAnchor="end" interval={0} />
-                <YAxis tick={{ fontSize: 11, fill: "#6b655d" }} tickFormatter={(v) => `${v} km`} unit=" km" />
-                <Tooltip formatter={(v, name) => [`${v} km`, name]} contentStyle={{ borderRadius: 10, fontSize: 12 }} />
-                <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
-                {schemes.map((s) => (
-                  <Line key={s} type="monotone" dataKey={SIM_SCHEME_LABELS[s] || s} stroke={SIM_SCHEME_COLORS[s] || "#888"} strokeWidth={2} dot={{ r: 4 }} />
-                ))}
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      </CollapsibleCard>
-    </>
-  );
-}

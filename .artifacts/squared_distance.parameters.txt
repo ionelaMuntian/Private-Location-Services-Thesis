@@ -1,4 +1,0 @@
-qx :: encrypted
-qy :: encrypted
-px :: clear
-py :: clear

@@ -56,7 +56,7 @@ def _deserialize_ciphertext(ciphertext_b64: str):
     try:
         ciphertext, ok = DeserializeCiphertext(path, BINARY)
         if not ok:
-            raise RuntimeError("OpenFHE failed to deserialize ciphertext.")
+            raise RuntimeError("OpenFHE failed to deserialize ciphertext")
         return ciphertext
     finally:
         Path(path).unlink(missing_ok=True)
@@ -72,10 +72,8 @@ class OpenFHEMultipartyRuntime:
         KEYS_DIR.mkdir(parents=True, exist_ok=True)
 
         if all(f.exists() for f in _ALL_KEY_FILES):
-            print("[OpenFHE] Loading persisted keys from disk", flush=True)
             self._load_from_disk()
         else:
-            print("[OpenFHE] No persisted keys found, generating new key pair", flush=True)
             self._generate_and_save()
 
     # Key generation + persistence
@@ -135,7 +133,6 @@ class OpenFHEMultipartyRuntime:
         SerializeToFile(str(_COMPANY_PK_FILE), self.joint_public_key,    BINARY)
         SerializeToFile(str(_USER_PK_FILE),    self.joint_public_key,    BINARY)
         self.cc.SerializeEvalMultKey(str(_EVAL_MULT_FILE), BINARY)
-        print("[OpenFHE] Keys saved to disk", flush=True)
 
     def _load_from_disk(self) -> None:
         cc, ok = DeserializeCryptoContext(str(_CC_FILE), BINARY)
@@ -164,8 +161,6 @@ class OpenFHEMultipartyRuntime:
         if not ok:
             raise RuntimeError("Failed to load company secret key from disk")
         self._company_sk = company_sk
-
-        print("[OpenFHE] Keys loaded successfully", flush=True)
 
     # Crypto operations
     def refresh_context(self) -> None:
@@ -201,12 +196,8 @@ class OpenFHEMultipartyRuntime:
         partials = self.cc.MultipartyDecryptMain([ciphertext], self._company_sk)
         return _serialize_to_b64(partials[0])
 
-    def company_fuse_scalar(
-        self,
-        user_partial_b64: str,
-        company_partial_b64: str,
-    ) -> float:
-        user_partial    = _deserialize_ciphertext(user_partial_b64)
+    def company_fuse_scalar(self, user_partial_b64: str, company_partial_b64: str,) -> float:
+        user_partial = _deserialize_ciphertext(user_partial_b64)
         company_partial = _deserialize_ciphertext(company_partial_b64)
 
         plaintext = self.cc.MultipartyDecryptFusion([user_partial, company_partial])

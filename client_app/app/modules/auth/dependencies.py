@@ -1,8 +1,3 @@
-# To take the token payload, extract the user id from it, check that the user exists and is active, then return the current user data.
-# Purpose - verifies whether the token payload exists
-#         - extracts the id form the payload
-#         - based on the id, it searches the repository to retrieve the current user
-
 from fastapi import Depends, HTTPException, status
 
 from .repository import AuthRepository
