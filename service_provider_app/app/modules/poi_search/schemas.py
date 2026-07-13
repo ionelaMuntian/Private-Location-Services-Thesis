@@ -144,7 +144,7 @@ class ConcreteEvaluationRequest(BaseModel):
     def validate_key_source(self):
         if not self.key_id and not self.evaluation_keys_b64:
             raise ValueError(
-                "Concrete evaluation requires either key_id or evaluation_keys_b64."
+                "Concrete evaluation requires either key_id or evaluation_keys_b64"
             )
 
         return self

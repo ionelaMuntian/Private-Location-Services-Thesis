@@ -61,6 +61,7 @@ class ConcreteClientRuntime:
         for i in range(1, self.n + 1):
             args += [0, 0, i]
 
+        # this expects all the arguments of the circuit to be sent, including the POIs
         encrypted_args = self.client.encrypt(*args)
 
         payload = {

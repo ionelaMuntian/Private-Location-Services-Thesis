@@ -5,5 +5,6 @@ class StepTimer:
     def __init__(self) -> None:
         self._start = perf_counter()
 
+    # converts the seconds into ms
     def elapsed_ms(self) -> float:
         return round((perf_counter() - self._start) * 1000.0, 3)

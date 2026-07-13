@@ -10,6 +10,7 @@ from .quantization import (
 
 quant_config = QuantizationConfig(scale_divisor=2200)
 
+# values for stripping the prefix of the coordinates
 _LAT_REF_M = 5_891_000.0
 _LON_REF_M = 2_617_000.0
 
@@ -30,10 +31,7 @@ class ConcreteClientAdapter(ClientCryptoAdapter):
         if n not in SUPPORTED_N:
             raise HTTPException(
                 status_code=422,
-                detail=(
-                    f"Concrete circuit is compiled for N ∈ {SUPPORTED_N}"
-                    f"Requested N={n} is not supported"
-                ),
+                detail=( f"Concrete circuit is compiled for N = {SUPPORTED_N} " ),
             )
 
         runtime = self._create_runtime(n)

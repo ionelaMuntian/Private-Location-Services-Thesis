@@ -223,7 +223,7 @@ async def _execute_single_scheme(request: NearestKClientRequest) -> dict:
                     detail=(
                         f"Category '{request.category}' has {actual_count} POIs "
                         f"which exceeds the largest compiled Concrete circuit "
-                        f"(N={max(_CONCRETE_SUPPORTED_N)}). Use a different scheme."
+                        f"(N={max(_CONCRETE_SUPPORTED_N)}). Use a different scheme"
                     ),
                 )
             n_candidates = min(suitable)

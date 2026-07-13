@@ -44,7 +44,7 @@ class AnomalyDetectionServiceProviderService:
     def list_samples(self) -> dict:
         if not self.samples:
             raise FileNotFoundError(
-                f"Demo samples not found at {MODELS_DIR / 'test_samples.json'}. "
+                f"Demo samples not found at {MODELS_DIR / 'test_samples.json'}"
                 "Rerun the training notebook to produce them."
             )
 
@@ -63,7 +63,7 @@ class AnomalyDetectionServiceProviderService:
     def predict_plaintext(self, sample_id: int) -> dict:
         if self.plaintext_model is None:
             raise FileNotFoundError(
-                f"Plaintext model not found at {MODELS_DIR / 'plaintext_model.joblib'}. "
+                f"Plaintext model not found at {MODELS_DIR / 'plaintext_model.joblib'}"
                 "Rerun the training notebook to produce it."
             )
 
