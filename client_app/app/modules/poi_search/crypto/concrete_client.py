@@ -60,65 +60,11 @@ class ConcreteClientAdapter(ClientCryptoAdapter):
                 "runtime": runtime,
                 "n_candidates": n,
                 "evaluation_keys_bytes": evaluation_keys_bytes,
-                "candidate_by_internal_id": {},
                 "quantization_scale_divisor": quant_config.scale_divisor,
                 "origin_x_q": ORIGIN_X_Q,
                 "origin_y_q": ORIGIN_Y_Q,
             },
         }
-
-    def build_public_args_for_candidates(
-        self,
-        metadata: dict,
-        candidates: list[dict],
-        local_state: dict,
-    ) -> list[dict]:
-        n = int(local_state["n_candidates"])
-        actual_n = len(candidates)
-
-        if actual_n == 0:
-            raise ValueError("Concrete: no candidates returned for the category")
-
-        padded = list(candidates)
-        for i in range(n - actual_n):
-            padded.append(candidates[i % actual_n])
-
-        items = []
-
-        for index, candidate in enumerate(padded, start=1):
-            px = (
-                quantize_metric_coordinate(float(candidate["lon_m"]), quant_config)
-                - ORIGIN_X_Q
-            )
-            py = (
-                quantize_metric_coordinate(float(candidate["lat_m"]), quant_config)
-                - ORIGIN_Y_Q
-            )
-
-            internal_id = int(index)
-            real_id = int(candidate["id"])
-
-            local_state["candidate_by_internal_id"][internal_id] = {
-                "id": real_id,
-                "name": candidate["name"],
-                "category": candidate["category"],
-                "latitude": candidate["latitude"],
-                "longitude": candidate["longitude"],
-            }
-
-            items.append(
-                {
-                    "id": internal_id,
-                    "name": candidate["name"],
-                    "category": candidate["category"],
-                    "latitude": candidate["latitude"],
-                    "longitude": candidate["longitude"],
-                    "px": int(px),
-                    "py": int(py),
-                }
-            )
-
-        return items
 
     def parse_response(
         self,
@@ -129,24 +75,25 @@ class ConcreteClientAdapter(ClientCryptoAdapter):
             raise ValueError("Missing Concrete runtime in local_state")
 
         runtime: ConcreteClientRuntime = local_state["runtime"]
-        candidate_by_internal_id = local_state.get("candidate_by_internal_id", {})
 
         encrypted_best = response_data.get("encrypted_best_result")
         if encrypted_best is None:
             raise ValueError("Missing encrypted_best_result in Concrete response")
+
+        candidates = response_data.get("candidates") or []
 
         best = runtime.decrypt_top1(encrypted_best)
 
         internal_id = int(best["id"])
         dist2_quantized = int(best["dist2"])
 
-        n = local_state.get("n_candidates", "?")
-        candidate = candidate_by_internal_id.get(internal_id)
-        if candidate is None:
+        if not (1 <= internal_id <= len(candidates)):
             raise ValueError(
-                f"Concrete PBS noise error: decrypted id={internal_id} is outside"
-                f"valid range [1..{n}]. Recompile with a lower p_error"
+                f"Concrete PBS noise error: decrypted id={internal_id} is outside "
+                f"valid range [1..{len(candidates)}]. Recompile with a lower p_error"
             )
+
+        candidate = candidates[internal_id - 1]
 
         distance_km = dequantize_squared_distance_to_km(dist2_quantized, quant_config)
 

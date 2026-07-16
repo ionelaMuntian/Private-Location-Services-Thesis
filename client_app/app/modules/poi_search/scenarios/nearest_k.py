@@ -6,13 +6,13 @@ from typing import cast
 _LAT_REF_M = 5_891_000.0
 _LON_REF_M = 2_617_000.0
 
-
+# degrees are converted to meters
 def _degrees_to_meters(lat_deg: float, lon_deg: float) -> tuple[float, float]:
     lon_m = lon_deg * 20_037_508.34 / 180.0
     lat_m = math.log(math.tan(math.pi / 4.0 + math.radians(lat_deg) / 2.0)) * (20_037_508.34 / math.pi)
     return lat_m, lon_m
 
-
+# strip the prefix to reduce the range
 def _degrees_to_shifted_meters(lat_deg: float, lon_deg: float) -> tuple[float, float]:
     lat_m, lon_m = _degrees_to_meters(lat_deg, lon_deg)
     return lat_m - _LAT_REF_M, lon_m - _LON_REF_M
@@ -32,7 +32,7 @@ from ..crypto.concrete_client import ConcreteClientAdapter
 from ..crypto.plaintext_client import PlaintextClientAdapter
 from ..schemas import NearestKClientRequest
 
-
+# helper to return the length of a base64 encoded string
 def _b64len(s: str) -> int:
     try:
         return len(base64.b64decode(s)) if s else 0
@@ -85,14 +85,17 @@ async def _execute_single_scheme(request: NearestKClientRequest) -> dict:
     if request.scheme == "all":
         raise HTTPException(
             status_code=400,
-            detail="Internal error: _execute_single_scheme cannot run scheme='all'",
+            detail="Internal error: _execute_single_scheme cannot run scheme=all",
         )
 
+    # prepare the coordinates
     lat_m_full, lon_m_full = _degrees_to_meters(request.latitude, request.longitude)
     lat_m = lat_m_full - _LAT_REF_M
     lon_m = lon_m_full - _LON_REF_M
 
     adapter = get_client_adapter(request.scheme)
+
+    # start the timer
     total_timer = StepTimer()
 
     if request.scheme == "openfhe_ss":
@@ -228,6 +231,7 @@ async def _execute_single_scheme(request: NearestKClientRequest) -> dict:
                 )
             n_candidates = min(suitable)
 
+        # prepare the query and measure the time to do so
         prepare_timer = StepTimer()
         prepared = adapter.prepare_query(
             latitude=lat_m,
@@ -247,6 +251,7 @@ async def _execute_single_scheme(request: NearestKClientRequest) -> dict:
                 detail="Concrete local_state is missing evaluation_keys_bytes",
             )
 
+        # upload the keys and measure the time to do so
         upload_keys_timer = StepTimer()
         key_response = await upload_concrete_keys_to_service_provider(
             evaluation_keys_bytes=evaluation_keys_bytes,
@@ -260,25 +265,7 @@ async def _execute_single_scheme(request: NearestKClientRequest) -> dict:
                 detail=f"Concrete key upload did not return key_id: {key_response}",
             )
 
-        candidate_fetch_timer = StepTimer()
-        candidate_response = await post_to_service_provider(
-            "/service/poi/concrete/candidates",
-            {
-                "category": request.category,
-                "k": request.k,
-                "n_candidates": n_candidates,
-            },
-        )
-        candidate_fetch_ms = candidate_fetch_timer.elapsed_ms()
-
-        build_public_args_timer = StepTimer()
-        items = adapter.build_public_args_for_candidates(
-            prepared["encrypted_query"]["metadata"],
-            candidate_response.get("candidates", []),
-            local_state,
-        )
-        build_public_args_ms = build_public_args_timer.elapsed_ms()
-
+        # measure the time to send the query, evaluate it and receive it
         evaluate_call_timer = StepTimer()
         raw_response = await post_to_service_provider(
             "/service/poi/concrete/evaluate",
@@ -287,12 +274,14 @@ async def _execute_single_scheme(request: NearestKClientRequest) -> dict:
                 "encrypted_user_coords_b64": prepared["encrypted_query"]["metadata"][
                     "encrypted_user_coords"
                 ],
+                "category": request.category,
                 "requested_k": request.k,
-                "items": items,
+                "n_candidates": n_candidates,
             },
         )
         evaluate_call_ms = evaluate_call_timer.elapsed_ms()
 
+        # measure the time to parse the query
         parse_timer = StepTimer()
         parsed_results = adapter.parse_response(
             raw_response,
@@ -304,45 +293,29 @@ async def _execute_single_scheme(request: NearestKClientRequest) -> dict:
 
         total_ms = total_timer.elapsed_ms()
 
-        candidate_metrics = candidate_response.get("metrics", {})
         evaluation_metrics = raw_response.get("metrics", {})
-
-        candidate_server = candidate_metrics.get("server", {})
         evaluation_server = evaluation_metrics.get("server", {})
-        candidate_workload = candidate_metrics.get("workload", {})
-
-        server_total_ms = None
-        if (
-            candidate_server.get("total_ms") is not None
-            or evaluation_server.get("total_ms") is not None
-        ):
-            server_total_ms = round(
-                float(candidate_server.get("total_ms", 0.0) or 0.0)
-                + float(evaluation_server.get("total_ms", 0.0) or 0.0),
-                3,
-            )
+        evaluation_workload = evaluation_metrics.get("workload", {})
 
         metrics = {
             "client": {
                 "prepare_query_ms": prepare_query_ms,
                 "upload_keys_ms": upload_keys_ms,
-                "candidate_fetch_ms": candidate_fetch_ms,
-                "build_public_args_ms": build_public_args_ms,
                 "evaluate_call_ms": evaluate_call_ms,
                 "parse_response_ms": parse_response_ms,
                 "total_ms": total_ms,
             },
             "server": {
-                "candidate_selection_ms": candidate_server.get(
+                "candidate_selection_ms": evaluation_server.get(
                     "candidate_selection_ms"
                 ),
                 "evaluation_ms": evaluation_server.get("evaluation_ms"),
-                "total_ms": server_total_ms,
+                "total_ms": evaluation_server.get("total_ms"),
             },
             "workload": {
-                "candidate_count": candidate_workload.get(
+                "candidate_count": evaluation_workload.get(
                     "candidate_count",
-                    len(items),
+                    n_candidates,
                 ),
                 "returned_count": len(parsed_results),
                 "k": request.k,
@@ -359,6 +332,7 @@ async def _execute_single_scheme(request: NearestKClientRequest) -> dict:
             "sizes": payload_sizes,
         }
 
+    # if plaintext
     prepare_timer = StepTimer()
     prepared = adapter.prepare_query(
         latitude=lat_m_full if request.scheme == "plaintext" else lat_m,

@@ -98,47 +98,14 @@ class EncryptedPoiResult(BaseModel):
     encrypted_distance: str
 
 
-class CandidatePoiItem(BaseModel):
-    id: int
-    name: str
-    category: str
-    latitude: float
-    longitude: float
-    lat_m: float
-    lon_m: float
-
-
-class ConcreteCandidatesRequest(BaseModel):
-    category: str
-    k: int = Field(..., gt=0, le=200)
-    n_candidates: int = Field(2, ge=1, le=20)
-
-
-class ConcreteCandidatesResponse(BaseModel):
-    category: str
-    k: int
-    candidates: List[CandidatePoiItem]
-    metrics: MetricsEnvelope
-
-
-class ConcreteEvaluationItem(BaseModel):
-    id: int
-    name: str
-    category: str
-    latitude: float
-    longitude: float
-
-    px: int
-    py: int
-
-
 class ConcreteEvaluationRequest(BaseModel):
     key_id: str | None = None
     evaluation_keys_b64: str | None = None
 
     encrypted_user_coords_b64: str
+    category: str
     requested_k: int = Field(..., gt=0, le=200)
-    items: List[ConcreteEvaluationItem]
+    n_candidates: int = Field(..., ge=1, le=20)
 
     @model_validator(mode="after")
     def validate_key_source(self):
@@ -150,15 +117,6 @@ class ConcreteEvaluationRequest(BaseModel):
         return self
 
 
-class ConcreteEvaluationResultItem(BaseModel):
-    id: int
-    name: str
-    category: str
-    latitude: float
-    longitude: float
-    encrypted_distance: str
-
-
 class ConcreteSortedResult(BaseModel):
     best_id: str
     best_dist2: str
@@ -167,6 +125,7 @@ class ConcreteSortedResult(BaseModel):
 class ConcreteEvaluationResponse(BaseModel):
     scheme: SingleSchemeType
     encrypted_best_result: ConcreteSortedResult | None = None
+    candidates: List[dict]
     metadata: dict[str, Any]
     metrics: MetricsEnvelope
 

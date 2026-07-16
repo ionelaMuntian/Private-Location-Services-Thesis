@@ -94,17 +94,21 @@ class OpenFHEMultipartyRuntime:
         return cc
 
     def _generate_eval_mult_keys(self) -> None:
+
+        # user generates the eval keys
         eval_mult_key_user = self.cc.KeySwitchGen(
             self._user_sk,
             self._user_sk,
         )
 
+        # company generates the evaluation keys, taking the evaluation keys from the user
         eval_mult_key_company = self.cc.MultiKeySwitchGen(
             self._company_sk,
             self._company_sk,
             eval_mult_key_user,
         )
 
+        # join the public eval keys
         eval_mult_key_joint = self.cc.MultiAddEvalMultKeys(
             eval_mult_key_user,
             eval_mult_key_company,
@@ -116,11 +120,11 @@ class OpenFHEMultipartyRuntime:
     def _generate_and_save(self) -> None:
         self.cc = self._create_context()
 
-        user_keys    = self.cc.KeyGen()
+        user_keys = self.cc.KeyGen()
         company_keys = self.cc.MultipartyKeyGen(user_keys.publicKey)
 
-        self._user_sk         = user_keys.secretKey
-        self._company_sk      = company_keys.secretKey
+        self._user_sk = user_keys.secretKey
+        self._company_sk = company_keys.secretKey
         self.joint_public_key = company_keys.publicKey
 
         self._generate_eval_mult_keys()

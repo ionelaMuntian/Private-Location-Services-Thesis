@@ -55,10 +55,7 @@ def execute_nearest_k(request: ServiceProviderNearestKRequest) -> dict:
     if request.scheme == "concrete":
         raise HTTPException(
             status_code=400,
-            detail=(
-                "Concrete uses a dedicated two-round protocol"
-                "Use POST /concrete/candidates then POST /concrete/evaluate"
-            ),
+            detail="Concrete uses a dedicated protocol. Use POST /concrete/evaluate",
         )
 
     raise HTTPException(

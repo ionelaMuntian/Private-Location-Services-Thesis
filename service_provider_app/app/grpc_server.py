@@ -19,7 +19,6 @@ from .modules.poi_search.engines.openfhe_ss_engine import (
     execute_openfhe_ss_upload_keys,
 )
 from .modules.poi_search.schemas import (
-    ConcreteCandidatesRequest,
     ConcreteEvaluationRequest,
     OpenFHESSEvaluateRequest,
     OpenFHESSUploadKeysRequest,
@@ -84,11 +83,6 @@ class ServiceProviderGatewayServicer(
 
             if method == "GET" and clean_path == "/service/poi/categories":
                 result = poi_service.list_categories()
-                return _json_response(200, result)
-
-            if method == "POST" and clean_path == "/service/poi/concrete/candidates":
-                dto = ConcreteCandidatesRequest(**payload)
-                result = poi_service.concrete_candidates(dto)
                 return _json_response(200, result)
 
             if method == "POST" and clean_path == "/service/poi/concrete/evaluate":

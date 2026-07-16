@@ -3,11 +3,13 @@ import math
 from .base import ClientCryptoAdapter
 from ....core.openfhe_ss_runtime_instance import get_openfhe_ss_runtime
 
+# convert the coordinates from Web Mercator coordinates back to degrees
 def _epsg3857_to_wgs84(lat_m: float, lon_m: float) -> tuple[float, float]:
     lon_deg = lon_m / 20037508.342789244 * 180.0
     lat_rad = 2.0 * math.atan(math.exp(lat_m / 6378137.0)) - math.pi / 2.0
     return math.degrees(lat_rad), lon_deg
 
+#  calculates the distance between two geographic points (given in degrees) along the Earth’s surface
 def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     R = 6371.0
     dlat = math.radians(lat2 - lat1)
@@ -49,7 +51,11 @@ class OpenFHESSClientAdapter(ClientCryptoAdapter):
             raise ValueError("OpenFHE SS: missing local_state")
 
         rt = get_openfhe_ss_runtime(local_state["n_candidates"])
+
+        # extract the encrypted distance ciphertext
         dist_ct_b64: str = response_data["dist_ct_b64"]
+
+        # extract the list of candidates
         candidates: list[dict] = response_data["candidates"]
         actual_n = len(candidates)
 

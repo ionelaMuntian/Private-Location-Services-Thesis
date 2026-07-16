@@ -7,18 +7,17 @@ from fastapi import HTTPException
 from ....core.concrete_server_runtime import ConcreteServerRuntime, SUPPORTED_N
 from ....core.metrics import StepTimer
 from ..repository import PoiRepository
-from ..schemas import (
-    ConcreteCandidatesRequest,
-    ConcreteEvaluationRequest,
-)
+from ..schemas import ConcreteEvaluationRequest
 
 repository = PoiRepository()
 
 _CONCRETE_KEY_STORE: dict[str, dict] = {}
+
+# how long the uploaded Concrete evaluation keys remain stored on the service provider
 CONCRETE_KEY_TTL_SECONDS = 60 * 60
+_SCALE_DIVISOR = 2200
 
 _runtime: ConcreteServerRuntime | None = None
-
 
 def _get_runtime() -> ConcreteServerRuntime:
     global _runtime
@@ -63,7 +62,7 @@ def execute_concrete_upload_keys(evaluation_keys_bytes: bytes) -> dict:
         "expires_in_seconds": CONCRETE_KEY_TTL_SECONDS,
     }
 
-
+# returns the eval keys as bytes. It needs either the id or the b64 bytes from the request
 def _resolve_evaluation_keys_bytes(request: ConcreteEvaluationRequest) -> bytes:
     if request.key_id:
         _cleanup_expired_keys()
@@ -87,67 +86,17 @@ def _resolve_evaluation_keys_bytes(request: ConcreteEvaluationRequest) -> bytes:
         detail="Concrete evaluation requires either key_id or evaluation_keys_b64",
     )
 
-
-def execute_concrete_candidates(request: ConcreteCandidatesRequest) -> dict:
-    total_timer = StepTimer()
-    candidate_timer = StepTimer()
-
-    candidates = repository.get_all_by_category(
-        category=request.category,
-        limit=1000,
-    )
-    candidate_selection_ms = candidate_timer.elapsed_ms()
-
-    if not candidates:
-        raise HTTPException(
-            status_code=422,
-            detail=f"No POIs found for category '{request.category}'",
-        )
-
-    normalized = [
-        {
-            "id": item["id"],
-            "name": item["name"],
-            "category": item["category"],
-            "latitude": item["latitude"],
-            "longitude": item["longitude"],
-            "lat_m": item["lat_m"],
-            "lon_m": item["lon_m"],
-        }
-        for item in candidates
-    ]
-
-    total_ms = total_timer.elapsed_ms()
-
-    return {
-        "category": request.category,
-        "k": request.k,
-        "candidates": normalized,
-        "metrics": {
-            "server": {
-                "candidate_selection_ms": candidate_selection_ms,
-                "computation_ms": 0.0,
-                "total_ms": total_ms,
-            },
-            "workload": {
-                "candidate_count": len(normalized),
-                "returned_count": len(normalized),
-                "k": request.k,
-                "category": request.category,
-                "n_candidates": request.n_candidates,
-            },
-        },
-    }
-
+def _quantize(value_m: float) -> int:
+    return int(round(value_m / _SCALE_DIVISOR))
 
 def execute_concrete_evaluation(request: ConcreteEvaluationRequest) -> dict:
-    n = len(request.items)
+    n = request.n_candidates
 
     if n not in SUPPORTED_N:
         raise HTTPException(
             status_code=422,
             detail=(
-                f"Received {n} items but Concrete circuits are only compiled for "
+                f"n_candidates={n} but Concrete circuits are only compiled for "
                 f"N ∈ {SUPPORTED_N}"
             ),
         )
@@ -156,12 +105,50 @@ def execute_concrete_evaluation(request: ConcreteEvaluationRequest) -> dict:
     runtime = _get_runtime()
     evaluation_keys_bytes = _resolve_evaluation_keys_bytes(request)
 
+    candidate_timer = StepTimer()
+    rows = repository.get_all_by_category(category=request.category, limit=n)
+    actual_n = len(rows)
+
+    if actual_n == 0:
+        raise HTTPException(
+            status_code=422,
+            detail=f"No POIs found for category '{request.category}'",
+        )
+
+    candidates = [
+        {
+            "id": r["id"],
+            "name": r["name"],
+            "category": r["category"],
+            "latitude": r["latitude"],
+            "longitude": r["longitude"],
+            "lat_m": r["lat_m"],
+            "lon_m": r["lon_m"],
+        }
+        for r in rows
+    ]
+
+    # the circuit is compiled for exactly n slots; pad by cycling through the real candidates so every slot maps to a genuine POI
+    padded = list(candidates)
+    for i in range(n - actual_n):
+        padded.append(candidates[i % actual_n])
+
+    items = [
+        {
+            "px": _quantize(c["lon_m"]),
+            "py": _quantize(c["lat_m"]),
+            "id": internal_id,
+        }
+        for internal_id, c in enumerate(padded, start=1)
+    ]
+    candidate_selection_ms = candidate_timer.elapsed_ms()
+
     evaluation_timer = StepTimer()
     encrypted_best = runtime.run_find_minimum(
         n=n,
         evaluation_keys_bytes=evaluation_keys_bytes,
         encrypted_user_coords_b64=request.encrypted_user_coords_b64,
-        items=request.items,
+        items=items,
     )
     evaluation_ms = evaluation_timer.elapsed_ms()
     total_ms = total_timer.elapsed_ms()
@@ -174,6 +161,16 @@ def execute_concrete_evaluation(request: ConcreteEvaluationRequest) -> dict:
     return {
         "scheme": "concrete",
         "encrypted_best_result": encrypted_best,
+        "candidates": [
+            {
+                "id": c["id"],
+                "name": c["name"],
+                "category": c["category"],
+                "latitude": c["latitude"],
+                "longitude": c["longitude"],
+            }
+            for c in padded
+        ],
         "metadata": {
             "n_candidates": n,
             "top_k_on_server": True,
@@ -181,14 +178,15 @@ def execute_concrete_evaluation(request: ConcreteEvaluationRequest) -> dict:
         },
         "metrics": {
             "server": {
+                "candidate_selection_ms": candidate_selection_ms,
                 "evaluation_ms": evaluation_ms,
                 "total_ms": total_ms,
             },
             "workload": {
-                "candidate_count": n,
+                "candidate_count": actual_n,
                 "returned_count": 1,
                 "k": request.requested_k,
-                "category": "",
+                "category": request.category,
             },
         },
     }

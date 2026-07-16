@@ -66,7 +66,7 @@ class ConcreteServerRuntime:
 
         args: list = [encrypted_qx, encrypted_qy]
         for item in items:
-            args += [int(item.px), int(item.py), int(item.id)]
+            args += [int(item["px"]), int(item["py"]), int(item["id"])]
 
         result = server.run(*args, evaluation_keys=evaluation_keys)
 

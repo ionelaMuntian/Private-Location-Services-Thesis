@@ -1,14 +1,10 @@
-from ..poi_search.engines.core_concrete import (
-    execute_concrete_candidates,
-    execute_concrete_evaluation,
-)
+from ..poi_search.engines.core_concrete import execute_concrete_evaluation
 from ..poi_search.engines.openfhe_ss_engine import (
     execute_openfhe_ss_upload_keys,
     execute_openfhe_ss_evaluate,
 )
 from .repository import PoiRepository
 from .schemas import (
-    ConcreteCandidatesRequest,
     ConcreteEvaluationRequest,
     OpenFHESSEvaluateRequest,
     OpenFHESSUploadKeysRequest,
@@ -26,9 +22,6 @@ class PoiSearchServiceProviderService:
 
     def list_categories(self) -> dict:
         return {"categories": self.repository.list_categories()}
-
-    def concrete_candidates(self, request: ConcreteCandidatesRequest) -> dict:
-        return execute_concrete_candidates(request)
 
     def concrete_evaluate(self, request: ConcreteEvaluationRequest) -> dict:
         return execute_concrete_evaluation(request)

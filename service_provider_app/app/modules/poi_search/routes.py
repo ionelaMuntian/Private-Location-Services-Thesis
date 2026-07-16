@@ -2,8 +2,6 @@ from fastapi import APIRouter
 
 from .schemas import (
     CategoryListResponse,
-    ConcreteCandidatesRequest,
-    ConcreteCandidatesResponse,
     ConcreteEvaluationRequest,
     ConcreteEvaluationResponse,
     OpenFHESSEvaluateRequest,
@@ -27,11 +25,6 @@ def nearest_k_by_category(request: ServiceProviderNearestKRequest):
 @router.get("/categories", response_model=CategoryListResponse)
 def list_categories():
     return service.list_categories()
-
-
-@router.post("/concrete/candidates", response_model=ConcreteCandidatesResponse)
-def concrete_candidates(request: ConcreteCandidatesRequest):
-    return service.concrete_candidates(request)
 
 
 @router.post("/concrete/evaluate", response_model=ConcreteEvaluationResponse)

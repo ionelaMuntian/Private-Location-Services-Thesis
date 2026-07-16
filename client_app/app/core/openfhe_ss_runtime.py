@@ -32,7 +32,7 @@ def _b64encode(data: bytes) -> str:
 def _b64decode(data: str) -> bytes:
     return base64.b64decode(data.encode("utf-8"))
 
-
+# serialize an object to a binary file, read the bytes and encode them
 def _serialize_to_b64(obj: Any) -> str:
     with tempfile.NamedTemporaryFile(delete=False) as tmp:
         path = tmp.name
@@ -43,20 +43,20 @@ def _serialize_to_b64(obj: Any) -> str:
     finally:
         Path(path).unlink(missing_ok=True)
 
-
+# decodes the string into the original bytes and writes them to a file, returns the file name
 def _write_b64_to_temp_file(payload_b64: str) -> str:
     with tempfile.NamedTemporaryFile(delete=False) as tmp:
         tmp.write(_b64decode(payload_b64))
         return tmp.name
 
-
+# retrieve the constant representing HEStd_NotSet
 def _get_hestd_not_set():
     try:
         return openfhe.SecurityLevel.HEStd_NotSet
     except AttributeError:
         return getattr(openfhe, "HEStd_NotSet", 0)
 
-
+# retrieve the constant representing STD128
 def _get_std128_param():
     try:
         return openfhe.BINFHE_PARAMSET.STD128
@@ -78,11 +78,17 @@ class OpenFHESSClientRuntime:
                 "openfhe.SchSwchParams not found"
             )
 
+        # ensure the security level is not the deafult one
         HEStd_NotSet = _get_hestd_not_set()
+
+        # select it
         STD128 = _get_std128_param()
 
         params = CCParamsCKKSRNS()
         params.SetMultiplicativeDepth(_SS_DEPTH)
+
+        # no of digits supported: 59 * lg(2) = 17.8
+        # the precision is 17 digits (in total, before and after the comma)
         params.SetScalingModSize(59)
         params.SetFirstModSize(60)
         params.SetScalingTechnique(FLEXIBLEAUTO)
@@ -93,6 +99,8 @@ class OpenFHESSClientRuntime:
         params.SetRingDim(1 << 14)
 
         cc = GenCryptoContext(params)
+
+        # all features must be manually enabled
         cc.Enable(PKESchemeFeature.PKE)
         cc.Enable(PKESchemeFeature.KEYSWITCH)
         cc.Enable(PKESchemeFeature.LEVELEDSHE)
@@ -110,6 +118,8 @@ class OpenFHESSClientRuntime:
         ss_params.SetNumValues(self.n)
         ss_params.SetComputeArgmin(True)
         ss_params.SetOneHotEncoding(True)
+
+        # secret key used by the FHEW
         lwe_sk = cc.EvalSchemeSwitchingSetup(ss_params)
 
         bfhcc = cc.GetBinCCForSchemeSwitch()
